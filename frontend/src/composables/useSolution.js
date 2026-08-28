@@ -31,7 +31,30 @@ export function useSolution(settings) {
    */
   function renderMarkdown(md) {
     if (!md) return ''
-    return marked.parse(md)
+    const renderer = new marked.Renderer()
+    renderer.code = function (tokenOrCode, infostring) {
+      const escapeCode = (value) => String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+      // marked >= 17 传入 Tokens.Code 对象；旧版传入 (code, language)。
+      const code = typeof tokenOrCode === 'object' && tokenOrCode !== null
+        ? tokenOrCode.text
+        : tokenOrCode
+      const info = typeof tokenOrCode === 'object' && tokenOrCode !== null
+        ? tokenOrCode.lang
+        : infostring
+      const lines = String(code ?? '').replace(/\n$/, '').split('\n')
+      const rows = lines.map((line, index) => {
+        return `<div class="code-line"><span class="code-line-number" aria-hidden="true">${index + 1}</span><span class="code-line-text">${escapeCode(line) || ' '}</span></div>`
+      }).join('')
+      const language = String(info || '').trim().split(/\s+/)[0].replace(/[^a-zA-Z0-9_-]/g, '')
+      const langClass = language ? ` class="language-${language}"` : ''
+      return `<pre><code${langClass}><span class="code-lines">${rows}</span></code></pre>`
+    }
+    return marked.parse(md, { renderer })
   }
 
   /**

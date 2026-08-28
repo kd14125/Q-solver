@@ -5,16 +5,23 @@ package shortcut
 import (
 	"Q-Solver/pkg/logger"
 	"Q-Solver/pkg/platform"
+	"maps"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
 
 type Manager struct {
+	mu              sync.Mutex
+	callbackMu      sync.Mutex
 	hHook           uintptr
 	hMouseHook      uintptr
 	recordingKeyFor string
 	maxComboKeys    map[uint32]bool
 	heldKeys        map[uint32]bool
+	triggeredCombo  string
+	recordedCombo   string
 
 	// Callbacks
 	OnTrigger           func(action string)
@@ -26,7 +33,7 @@ type Manager struct {
 	Shortcuts map[string]KeyBinding
 }
 
-var globalManager *Manager
+var globalManager atomic.Pointer[Manager]
 
 func NewManager() *Manager {
 	return &Manager{
@@ -37,39 +44,95 @@ func NewManager() *Manager {
 }
 
 func (m *Manager) Start() {
-	globalManager = m
+	globalManager.Store(m)
 	go m.installHooks()
 }
 
 func (m *Manager) Stop() {
-	if m.hHook != 0 {
-		if platform.UnhookWindowsHookEx(m.hHook) {
+	globalManager.CompareAndSwap(m, nil)
+	m.mu.Lock()
+	hHook := m.hHook
+	hMouseHook := m.hMouseHook
+	m.hHook = 0
+	m.hMouseHook = 0
+	m.heldKeys = make(map[uint32]bool)
+	m.triggeredCombo = ""
+	m.mu.Unlock()
+
+	if hHook != 0 {
+		if platform.UnhookWindowsHookEx(hHook) {
 			logger.Println("卸载键盘Hook成功")
 		} else {
 			logger.Println("卸载键盘Hook失败")
 		}
-		m.hHook = 0
 	}
-	if m.hMouseHook != 0 {
-		if platform.UnhookWindowsHookEx(m.hMouseHook) {
+	if hMouseHook != 0 {
+		if platform.UnhookWindowsHookEx(hMouseHook) {
 			logger.Println("卸载鼠标Hook成功")
 		} else {
 			logger.Println("卸载鼠标Hook失败")
 		}
-		m.hMouseHook = 0
 	}
-	globalManager = nil
 }
 
 func (m *Manager) StartRecording(action string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.recordingKeyFor = action
 	m.maxComboKeys = make(map[uint32]bool)
+	m.recordedCombo = ""
 	logger.Printf("开始录制快捷键: %s\n", action)
 }
 
 func (m *Manager) StopRecording() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.recordingKeyFor = ""
+	m.recordedCombo = ""
 	logger.Println("停止录制快捷键")
+}
+
+func (m *Manager) ReplaceShortcuts(shortcuts map[string]KeyBinding) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	clear(m.Shortcuts)
+	maps.Copy(m.Shortcuts, shortcuts)
+}
+
+func (m *Manager) GetShortcuts() map[string]KeyBinding {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make(map[string]KeyBinding, len(m.Shortcuts))
+	maps.Copy(result, m.Shortcuts)
+	return result
+}
+
+func (m *Manager) SetShortcut(action string, binding KeyBinding) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Shortcuts[action] = binding
+}
+
+// dispatchCallback keeps callbacks out of the low-level Hook thread, serialises
+// Wails/window operations, and prevents one callback panic from terminating the process.
+func (m *Manager) dispatchCallback(name string, callback func()) {
+	go func() {
+		m.callbackMu.Lock()
+		defer m.callbackMu.Unlock()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.Printf("快捷键回调异常 (%s): %v\n", name, recovered)
+			}
+		}()
+		callback()
+	}()
+}
+
+func releaseKeyLocked(manager *Manager, vkCode uint32) {
+	delete(manager.heldKeys, vkCode)
+	// A released non-modifier key must allow Alt/Win + key to trigger again
+	// while the modifier remains held.
+	manager.triggeredCombo = ""
 }
 
 func (m *Manager) installHooks() {
@@ -79,22 +142,37 @@ func (m *Manager) installHooks() {
 	// 创建键盘回调
 	kbdCallback := syscall.NewCallback(keyboardHookProc)
 	// 安装键盘钩子
-	m.hHook = platform.SetWindowsHookEx(platform.WH_KEYBOARD_LL, kbdCallback, hMod, 0)
-	if m.hHook == 0 {
+	hHook := platform.SetWindowsHookEx(platform.WH_KEYBOARD_LL, kbdCallback, hMod, 0)
+	if hHook == 0 {
 		logger.Println("安装键盘钩子失败")
 	}
 
 	// 创建鼠标回调
 	mouseCallback := syscall.NewCallback(mouseHookProc)
 	// 安装鼠标钩子
-	m.hMouseHook = platform.SetWindowsHookEx(platform.WH_MOUSE_LL, mouseCallback, hMod, 0)
-	if m.hMouseHook == 0 {
+	hMouseHook := platform.SetWindowsHookEx(platform.WH_MOUSE_LL, mouseCallback, hMod, 0)
+	if hMouseHook == 0 {
 		logger.Println("安装鼠标钩子失败")
 	}
 
-	if m.hHook == 0 && m.hMouseHook == 0 {
+	if hHook == 0 && hMouseHook == 0 {
 		return
 	}
+
+	m.mu.Lock()
+	if globalManager.Load() != m {
+		m.mu.Unlock()
+		if hHook != 0 {
+			platform.UnhookWindowsHookEx(hHook)
+		}
+		if hMouseHook != 0 {
+			platform.UnhookWindowsHookEx(hMouseHook)
+		}
+		return
+	}
+	m.hHook = hHook
+	m.hMouseHook = hMouseHook
+	m.mu.Unlock()
 
 	// 消息循环
 	var msg platform.MSG
@@ -113,7 +191,8 @@ func (m *Manager) installHooks() {
 // 判断：有快捷键是 Alt + ~ 的吗？ -> 有！
 // 结果：拦截（return 1，Chrome 收不到 ~）。
 func keyboardHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
-	if globalManager == nil {
+	manager := globalManager.Load()
+	if manager == nil {
 		return 0
 	}
 	// 只有当 nCode >= 0 时才处理消息，否则直接放行
@@ -122,33 +201,40 @@ func keyboardHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 		kbd := (*platform.KBDLLHOOKSTRUCT)(unsafe.Pointer(lParam))
 		// 监听按下事件 (WM_KEYDOWN) 或 系统按键按下 (WM_SYSKEYDOWN，比如按住 Alt 时)
 		if wParam == platform.WM_KEYDOWN || wParam == platform.WM_SYSKEYDOWN {
-			globalManager.heldKeys[kbd.VkCode] = true
-			if onKeysChanged() {
+			manager.mu.Lock()
+			manager.heldKeys[kbd.VkCode] = true
+			consumed := onKeysChanged(manager)
+			manager.mu.Unlock()
+			if consumed {
 				return 1
 			}
 		}
 		// 处理松开事件
 		if wParam == platform.WM_KEYUP || wParam == platform.WM_SYSKEYUP {
+			manager.mu.Lock()
 			// 1. 从 map 中移除该键
-			delete(globalManager.heldKeys, kbd.VkCode)
+			releaseKeyLocked(manager, kbd.VkCode)
 
 			// 录制模式下，松开按键也要检查是否结束录制
-			if globalManager.recordingKeyFor != "" {
-				if len(globalManager.heldKeys) == 0 {
-					finishRecording()
+			if manager.recordingKeyFor != "" {
+				if len(manager.heldKeys) == 0 {
+					finishRecordingLocked(manager)
 				}
+				manager.mu.Unlock()
 				return 1 // 录制期间吞掉所有按键
 			}
+			manager.mu.Unlock()
 		}
 	}
 
 	// 如果不是我们要拦截的键，或者 nCode < 0，必须调用 CallNextHookEx
 	// 否则会导致系统键盘卡死或其他人无法使用键盘
-	return platform.CallNextHookEx(globalManager.hHook, nCode, wParam, lParam)
+	return platform.CallNextHookEx(0, nCode, wParam, lParam)
 }
 
 func mouseHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
-	if globalManager == nil {
+	manager := globalManager.Load()
+	if manager == nil {
 		return 0
 	}
 	if nCode >= 0 {
@@ -180,68 +266,73 @@ func mouseHookProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 
 		if vkCode != 0 {
 			if isDown {
-				globalManager.heldKeys[vkCode] = true
-				if onKeysChanged() {
+				manager.mu.Lock()
+				manager.heldKeys[vkCode] = true
+				consumed := onKeysChanged(manager)
+				manager.mu.Unlock()
+				if consumed {
 					return 1
 				}
 			} else if isUp {
-				delete(globalManager.heldKeys, vkCode)
+				manager.mu.Lock()
+				releaseKeyLocked(manager, vkCode)
 				// 录制模式下，松开按键也要检查是否结束录制
-				if globalManager.recordingKeyFor != "" {
-					if len(globalManager.heldKeys) == 0 {
-						finishRecording()
+				if manager.recordingKeyFor != "" {
+					if len(manager.heldKeys) == 0 {
+						finishRecordingLocked(manager)
 					}
+					manager.mu.Unlock()
 					return 1
 				}
+				manager.mu.Unlock()
 			}
 		}
 	}
-	return platform.CallNextHookEx(globalManager.hMouseHook, nCode, wParam, lParam)
+	return platform.CallNextHookEx(0, nCode, wParam, lParam)
 }
 
-func onKeysChanged() bool {
-	if globalManager == nil {
+func onKeysChanged(manager *Manager) bool {
+	if manager == nil {
 		return false
 	}
 
 	// --- 录制模式 ---
-	if globalManager.recordingKeyFor != "" {
+	if manager.recordingKeyFor != "" {
 		// 更新最大按键组合
-		if len(globalManager.heldKeys) >= len(globalManager.maxComboKeys) {
-			globalManager.maxComboKeys = make(map[uint32]bool)
-			for k, v := range globalManager.heldKeys {
-				globalManager.maxComboKeys[k] = v
+		if len(manager.heldKeys) >= len(manager.maxComboKeys) {
+			manager.maxComboKeys = make(map[uint32]bool)
+			for k, v := range manager.heldKeys {
+				manager.maxComboKeys[k] = v
 			}
 		}
 
 		// 实时发给前端显示
-		readableName := GetReadableName(globalManager.maxComboKeys)
-		if globalManager.OnRecord != nil {
-			globalManager.OnRecord(globalManager.recordingKeyFor, readableName, GetComboID(globalManager.maxComboKeys))
+		readableName := GetReadableName(manager.maxComboKeys)
+		comboID := GetComboID(manager.maxComboKeys)
+		if manager.OnRecord != nil && comboID != manager.recordedCombo {
+			callback := manager.OnRecord
+			action := manager.recordingKeyFor
+			manager.recordedCombo = comboID
+			manager.dispatchCallback("record", func() {
+				callback(action, readableName, comboID)
+			})
 		}
 		return true // 吞掉按键
 	}
 
 	// --- 正常模式 ---
 	// 将当前按下的所有键生成 ID，去配置里查
-	currentComboID := GetComboID(globalManager.heldKeys)
-	for action, savedComboID := range globalManager.Shortcuts {
+	currentComboID := GetComboID(manager.heldKeys)
+	for action, savedComboID := range manager.Shortcuts {
 		if savedComboID.ComboID == currentComboID {
-			// 检查是否包含 Alt 键 (VK_MENU=18, VK_LMENU=164, VK_RMENU=165)
-			// 或者 Win 键 (VK_LWIN=91, VK_RWIN=92)
-			// 如果包含这些键，且其他键被我们吞掉了，Windows 会认为用户只按了 Alt/Win，从而激活菜单栏或开始菜单
-			hasAlt := globalManager.heldKeys[18] || globalManager.heldKeys[164] || globalManager.heldKeys[165]
-			hasWin := globalManager.heldKeys[91] || globalManager.heldKeys[92]
-
-			if hasAlt || hasWin {
-				// 模拟按下并松开 Ctrl 键，防止 Windows 激活菜单栏/开始菜单
-				// VK_CONTROL = 0x11, KEYEVENTF_KEYUP = 0x0002
-				platform.KeybdEvent(platform.VK_CONTROL, 0, 0, 0)
-				platform.KeybdEvent(platform.VK_CONTROL, 0, 2, 0)
+			if manager.triggeredCombo == currentComboID {
+				return true
 			}
-
-			if globalManager.OnTrigger != nil {
-				globalManager.OnTrigger(action)
+			manager.triggeredCombo = currentComboID
+			if manager.OnTrigger != nil {
+				callback := manager.OnTrigger
+				// 低级 Hook 线程只负责拦截按键；窗口、Wails 和网络操作异步执行。
+				manager.dispatchCallback(action, func() { callback(action) })
 			}
 			return true // 吞掉按键
 		}
@@ -249,29 +340,32 @@ func onKeysChanged() bool {
 	return false
 }
 
-func finishRecording() {
-	if globalManager == nil || globalManager.recordingKeyFor == "" {
+// finishRecordingLocked requires manager.mu to be held by the caller.
+func finishRecordingLocked(manager *Manager) {
+	if manager == nil || manager.recordingKeyFor == "" {
 		return
 	}
 
 	// 如果没有按任何键（比如直接点击录制然后点别的），忽略
-	if len(globalManager.maxComboKeys) == 0 {
-		globalManager.recordingKeyFor = ""
+	if len(manager.maxComboKeys) == 0 {
+		manager.recordingKeyFor = ""
 		return
 	}
 
-	comboID := GetComboID(globalManager.maxComboKeys)
-	readableName := GetReadableName(globalManager.maxComboKeys)
-	action := globalManager.recordingKeyFor
+	comboID := GetComboID(manager.maxComboKeys)
+	readableName := GetReadableName(manager.maxComboKeys)
+	action := manager.recordingKeyFor
 
 	// 退出录制模式
-	globalManager.recordingKeyFor = ""
-	globalManager.maxComboKeys = nil
+	manager.recordingKeyFor = ""
+	manager.maxComboKeys = nil
+	manager.recordedCombo = ""
 
 	// 异步调用回调，避免阻塞 Hook 线程
-	go func() {
-		if globalManager.OnRecordingComplete != nil {
-			globalManager.OnRecordingComplete(action, readableName, comboID)
-		}
-	}()
+	if manager.OnRecordingComplete != nil {
+		callback := manager.OnRecordingComplete
+		manager.dispatchCallback("recording-complete", func() {
+			callback(action, readableName, comboID)
+		})
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"Q-Solver/pkg/llm"
 	"Q-Solver/pkg/logger"
 	"Q-Solver/pkg/screen"
+	"Q-Solver/pkg/stt"
 	"context"
 	"encoding/base64"
 	"strings"
@@ -16,8 +17,8 @@ import (
 
 // 重连相关常量
 const (
-	maxReconnectAttempts = 3                // 最大重连尝试次数
-	reconnectDelay       = time.Second      // 重连间隔
+	maxReconnectAttempts = 3               // 最大重连尝试次数
+	reconnectDelay       = time.Second     // 重连间隔
 	connectTimeout       = 3 * time.Second // 连接超时时间
 )
 
@@ -57,6 +58,7 @@ type LiveSessionManager struct {
 
 	// 重连状态机
 	state       atomic.Int32 // 当前状态 (SessionState)
+	sttActive   atomic.Bool  // 是否正在使用 STT 兼容模式
 	reconnectMu sync.Mutex   // 保证只有一个协程执行重连
 
 	// 协程管理 - 使用 context 控制生命周期
@@ -89,6 +91,9 @@ func (m *LiveSessionManager) Start() error {
 	defer m.mu.Unlock()
 
 	cfg := m.configManager.Get()
+	if cfg.STTEnabled {
+		return m.startSTTMode(cfg)
+	}
 
 	// 检查 Provider 是否支持 Live
 	provider := m.llmService.GetProvider()
@@ -186,6 +191,7 @@ func (m *LiveSessionManager) Stop() {
 
 	// 执行清理
 	m.cleanup()
+	m.sttActive.Store(false)
 
 	m.emitEvent("live:status", "disconnected")
 }
@@ -247,7 +253,106 @@ func (m *LiveSessionManager) errorWatcher() {
 
 // IsActive 检查 Live Session 是否活跃
 func (m *LiveSessionManager) IsActive() bool {
-	return m.session.Load() != nil && m.state.Load() != int32(StateStopped)
+	return (m.session.Load() != nil || m.sttActive.Load()) && m.state.Load() != int32(StateStopped)
+}
+
+// startSTTMode 启动“系统音频分段 -> STT -> 原文本模型回答”的兼容模式。
+func (m *LiveSessionManager) startSTTMode(cfg config.Config) error {
+	if cfg.STTAPIKey == "" || cfg.STTBaseURL == "" {
+		return &liveError{"请先配置语音转文字 API Key 和 API 地址"}
+	}
+	if m.llmService.GetProvider() == nil {
+		return &liveError{"文本模型尚未初始化"}
+	}
+
+	m.emitEvent("live:status", "connecting")
+	capture, err := audio.NewLoopbackCapture(nil)
+	if err != nil {
+		m.emitEvent("live:status", "error")
+		return &liveError{"音频采集初始化失败: " + err.Error()}
+	}
+	if err := capture.Start(); err != nil {
+		capture.Close()
+		m.emitEvent("live:status", "error")
+		return &liveError{"音频采集启动失败: " + err.Error()}
+	}
+
+	m.audioCapture = capture
+	m.cancelCtx, m.cancelFunc = context.WithCancel(m.ctx)
+	m.errorChan = make(chan error, 4)
+	m.state.Store(int32(StateNormal))
+	m.sttActive.Store(true)
+	m.graph = NewGraph(m.cancelCtx, m.configManager, m.llmService, m.emitEvent, 3)
+	m.graph.Start()
+	m.wg.Add(1)
+	go m.sttLoop(capture.GetAudioChannel())
+	m.emitEvent("live:status", "connected")
+	return nil
+}
+
+func (m *LiveSessionManager) sttLoop(audioChan <-chan []byte) {
+	defer m.wg.Done()
+	const segmentBytes = audio.SampleRate * audio.BytesPerSample * 5
+	pcm := make([]byte, 0, segmentBytes+audio.PacketSize)
+
+	for {
+		select {
+		case <-m.cancelCtx.Done():
+			return
+		case packet, ok := <-audioChan:
+			if !ok {
+				return
+			}
+			pcm = append(pcm, packet...)
+			if len(pcm) < segmentBytes {
+				continue
+			}
+			segment := append([]byte(nil), pcm[:segmentBytes]...)
+			pcm = pcm[segmentBytes:]
+			m.processSTTSegment(segment)
+		}
+	}
+}
+
+func (m *LiveSessionManager) processSTTSegment(pcm []byte) {
+	cfg := m.configManager.Get()
+	client := stt.Client{
+		APIKey: cfg.STTAPIKey, BaseURL: cfg.STTBaseURL,
+		Model: cfg.STTModel, Language: cfg.STTLanguage,
+	}
+	ctx, cancel := context.WithTimeout(m.cancelCtx, 90*time.Second)
+	defer cancel()
+	text, err := client.Transcribe(ctx, stt.PCM16MonoToWAV(pcm, audio.SampleRate))
+	if err != nil {
+		logger.Printf("[STT] 转写失败: %v", err)
+		m.emitEvent("live:error", err.Error())
+		return
+	}
+	if text == "" {
+		return
+	}
+
+	m.emitEvent("live:transcript", text)
+	m.emitEvent("live:interviewer-done")
+	provider := m.llmService.GetProvider()
+	messages := []llm.Message{
+		llm.NewSystemMessage(cfg.Prompt),
+		llm.NewUserMessage(text),
+	}
+	answer, err := provider.GenerateContentStream(ctx, messages, func(chunk llm.StreamChunk) {
+		if chunk.Type == llm.ChunkContent && chunk.Content != "" {
+			m.emitEvent("live:ai-text", chunk.Content)
+		}
+	})
+	if err != nil {
+		logger.Printf("[STT] 文本模型回答失败: %v", err)
+		m.emitEvent("live:error", "文本模型回答失败: "+err.Error())
+		return
+	}
+	m.emitEvent("live:done")
+	if m.graph != nil && answer.Content != "" {
+		m.graph.Push(text, answer.Content)
+	}
 }
 
 // audioSender 从音频 channel 读取数据并发送给 Live Session

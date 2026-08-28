@@ -96,10 +96,10 @@ func (s *GeminiLiveSession) Receive() (*LiveMessage, error) {
 			logger.Printf("LiveAPI: 收到新的 session handle (resumable=%v,handle=%s)", msg.SessionResumptionUpdate.Resumable, msg.SessionResumptionUpdate.NewHandle)
 		}
 	}
-		// GoAway 消息 - 服务器要求断开，需重连
+	// GoAway 消息 - 服务器要求断开，需重连
 	if msg.GoAway != nil {
-		logger.Println("LiveAPI: 收到 GoAway 消息，需要重连.还有 %v秒断开", msg.GoAway.TimeLeft)
-		return &LiveMessage{Type: LiveMsgGoAway},nil
+		logger.Printf("LiveAPI: 收到 GoAway 消息，需要重连.还有 %v秒断开", msg.GoAway.TimeLeft)
+		return &LiveMessage{Type: LiveMsgGoAway}, nil
 	}
 	return s.convertMessage(msg), nil
 }

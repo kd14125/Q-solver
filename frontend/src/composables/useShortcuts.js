@@ -18,9 +18,10 @@ export function useShortcuts() {
 
   // 快捷键动作列表，包含 Windows 和 macOS 默认值
   const shortcutActions = [
-    { action: 'solve', label: '一键解题', default: 'F8', macDefault: '⌘1' },
-    { action: 'toggle', label: '隐藏/展示', default: 'F9', macDefault: '⌘2' },
-    { action: 'clickthrough', label: '鼠标穿透', default: 'F10', macDefault: '⌘3' },
+    { action: 'screenshot', label: '截图（可连续 1-3 张）', default: 'F8', macDefault: '⌘1' },
+    { action: 'send', label: '发送截图并请求回答', default: 'F7', macDefault: '⌘2' },
+    { action: 'toggle', label: '隐藏/展示', default: 'F9', macDefault: '⌘3' },
+    { action: 'clickthrough', label: '鼠标穿透', default: 'F10', macDefault: '⌘4' },
     { action: 'move_up', label: '向上移动', default: 'Alt+↑', macDefault: '⌘⌥↑' },
     { action: 'move_down', label: '向下移动', default: 'Alt+↓', macDefault: '⌘⌥↓' },
     { action: 'move_left', label: '向左移动', default: 'Alt+←', macDefault: '⌘⌥←' },

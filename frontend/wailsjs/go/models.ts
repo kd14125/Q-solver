@@ -25,6 +25,12 @@ export namespace config {
 	    thinkingBudget?: number;
 	    assistantModel?: string;
 	    useLiveApi?: boolean;
+	    sttEnabled?: boolean;
+	    sttAPIKey?: string;
+	    sttBaseURL?: string;
+	    sttModel?: string;
+	    sttLanguage?: string;
+	    voiceReply?: boolean;
 	    windowWidth?: number;
 	    windowHeight?: number;
 	
@@ -58,6 +64,12 @@ export namespace config {
 	        this.thinkingBudget = source["thinkingBudget"];
 	        this.assistantModel = source["assistantModel"];
 	        this.useLiveApi = source["useLiveApi"];
+	        this.sttEnabled = source["sttEnabled"];
+	        this.sttAPIKey = source["sttAPIKey"];
+	        this.sttBaseURL = source["sttBaseURL"];
+	        this.sttModel = source["sttModel"];
+	        this.sttLanguage = source["sttLanguage"];
+	        this.voiceReply = source["voiceReply"];
 	        this.windowWidth = source["windowWidth"];
 	        this.windowHeight = source["windowHeight"];
 	    }

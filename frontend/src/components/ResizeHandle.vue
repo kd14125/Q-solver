@@ -1,118 +1,63 @@
 <template>
-  <div 
-    class="resize-handle" 
-    @mousedown="startResize"
-    title="拖动调整窗口大小"
-  >
-    <svg class="resize-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M22 22L12 22M22 22L22 12M22 22L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
+  <div class="resize-overlay" aria-label="拖动边框调整窗口大小">
+    <span v-for="edge in edges" :key="edge" class="resize-zone" :class="`resize-${edge}`"
+      @mousedown="startResize($event, edge)" />
   </div>
 </template>
 
 <script setup>
-import { WindowGetSize, WindowSetSize } from '../../wailsjs/runtime/runtime'
-
-const MIN_WIDTH = 840
-const MIN_HEIGHT = 700
-const MAX_WIDTH = 1024
-const MAX_HEIGHT = 768
-
-let startX = 0
-let startY = 0
-let startWidth = 0
-let startHeight = 0
-
-async function startResize(e) {
-  e.preventDefault()
-  
-  // 获取当前窗口大小
-  const size = await WindowGetSize()
-  startWidth = size.w
-  startHeight = size.h
-  startX = e.screenX
-  startY = e.screenY
-  
-  // 添加全局事件监听
-  document.addEventListener('mousemove', onResize)
-  document.addEventListener('mouseup', stopResize)
-  
-  // 添加拖动时的样式
-  document.body.style.cursor = 'nwse-resize'
-  document.body.style.userSelect = 'none'
-}
-
-function onResize(e) {
-  const deltaX = e.screenX - startX
-  const deltaY = e.screenY - startY
-  
-  // 计算新尺寸，确保在最小值和最大值之间
-  const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + deltaX))
-  const newHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + deltaY))
-  
-  // 设置窗口大小
-  WindowSetSize(newWidth, newHeight)
-}
-
+import { WindowGetSize, WindowSetSize, WindowGetPosition, WindowSetPosition } from '../../wailsjs/runtime/runtime'
 import { UpdateSettings, GetSettings } from '../../wailsjs/go/main/App'
 
+const MIN_WIDTH = 420
+const MIN_HEIGHT = 350
+const edges = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
+let resizing = false, direction = '', startX = 0, startY = 0, startWidth = 0, startHeight = 0, startLeft = 0, startTop = 0
+
+async function startResize(event, edge) {
+  if (resizing) return
+  event.preventDefault(); event.stopPropagation()
+  const [size, position] = await Promise.all([WindowGetSize(), WindowGetPosition()])
+  resizing = true; direction = edge; startX = event.screenX; startY = event.screenY
+  startWidth = size.w; startHeight = size.h; startLeft = position.x; startTop = position.y
+  document.addEventListener('mousemove', onResize)
+  document.addEventListener('mouseup', stopResize, { once: true })
+  document.body.style.cursor = `${edge}-resize`; document.body.style.userSelect = 'none'
+}
+
+function onResize(event) {
+  if (!resizing) return
+  const dx = event.screenX - startX, dy = event.screenY - startY
+  const fromLeft = direction.includes('w'), fromTop = direction.includes('n')
+  const width = Math.max(MIN_WIDTH, startWidth + (fromLeft ? -dx : direction.includes('e') ? dx : 0))
+  const height = Math.max(MIN_HEIGHT, startHeight + (fromTop ? -dy : direction.includes('s') ? dy : 0))
+  const left = fromLeft ? startLeft + startWidth - width : startLeft
+  const top = fromTop ? startTop + startHeight - height : startTop
+  if (fromLeft || fromTop) WindowSetPosition(left, top)
+  WindowSetSize(width, height)
+}
+
 async function stopResize() {
-  document.removeEventListener('mousemove', onResize)
-  document.removeEventListener('mouseup', stopResize)
-  
-  // 恢复样式
-  document.body.style.cursor = ''
-  document.body.style.userSelect = ''
-  
-  // 保存窗口尺寸到配置
+  if (!resizing) return
+  resizing = false; document.removeEventListener('mousemove', onResize)
+  document.body.style.cursor = ''; document.body.style.userSelect = ''
   try {
-    const size = await WindowGetSize()
-    const settings = await GetSettings()
-    settings.windowWidth = size.w
-    settings.windowHeight = size.h
+    const size = await WindowGetSize(), settings = await GetSettings()
+    settings.windowWidth = size.w; settings.windowHeight = size.h
     await UpdateSettings(JSON.stringify(settings))
-  } catch (e) {
-    console.error('保存窗口尺寸失败:', e)
-  }
+  } catch (error) { console.error('保存窗口尺寸失败:', error) }
 }
 </script>
 
 <style scoped>
-.resize-handle {
-  position: fixed;
-  bottom: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
-  cursor: nwse-resize;
-  z-index: 99999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
-  pointer-events: auto;
-  opacity: 0.4;
-}
-
-.resize-handle:hover {
-  opacity: 1;
-  background: var(--bg-hover);
-}
-
-.resize-handle:active {
-  opacity: 1;
-  background: var(--bg-active);
-}
-
-.resize-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--text-tertiary);
-  transition: color var(--transition-fast);
-}
-
-.resize-handle:hover .resize-icon {
-  color: var(--text-secondary);
-}
+.resize-overlay { position: fixed; inset: 0; z-index: 99999; pointer-events: none; }
+.resize-zone { position: absolute; display: block; pointer-events: auto; }
+.resize-n, .resize-s { left: 10px; right: 10px; height: 8px; }
+.resize-n { top: 0; cursor: n-resize; } .resize-s { bottom: 0; cursor: s-resize; }
+.resize-e, .resize-w { top: 10px; bottom: 10px; width: 8px; }
+.resize-e { right: 0; cursor: e-resize; } .resize-w { left: 0; cursor: w-resize; }
+.resize-ne, .resize-nw, .resize-se, .resize-sw { width: 16px; height: 16px; }
+.resize-ne { top: 0; right: 0; cursor: ne-resize; } .resize-nw { top: 0; left: 0; cursor: nw-resize; }
+.resize-se { bottom: 0; right: 0; cursor: se-resize; } .resize-sw { bottom: 0; left: 0; cursor: sw-resize; }
+.resize-zone:hover { background: rgba(16, 185, 129, .12); }
 </style>

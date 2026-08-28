@@ -26,10 +26,11 @@ func main() {
 		Title:     "",
 		Width:     1024,
 		Height:    768,
-		MinWidth:  840,
-		MinHeight: 700,
-		MaxWidth:  1024,
-		MaxHeight: 768,
+		MinWidth:  420,
+		MinHeight: 350,
+		// MaxWidth/MaxHeight 为 0，允许用户自由缩放窗口；最小尺寸仍由上面限制。
+		MaxWidth:  0,
+		MaxHeight: 0,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

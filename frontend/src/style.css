@@ -74,6 +74,7 @@
     --text-base: 14px;
     --text-lg: 16px;
     --text-xl: 18px;
+    --ai-font-size: 14px;
 
     /* Transitions */
     --transition-fast: 0.15s ease;
@@ -569,7 +570,7 @@ body {
 .markdown-body {
     flex: 1;
     overflow-y: auto;
-    font-size: var(--text-base);
+    font-size: var(--ai-font-size);
     line-height: 1.7;
     color: var(--text-primary);
     font-weight: 400;
@@ -654,12 +655,13 @@ body {
 
 /* Code Blocks */
 .markdown-body pre {
-    background: linear-gradient(180deg, #1a1b26 0%, #16161e 100%);
+    /* 跟随窗口透明度，不再使用不透明渐变背景 */
+    background: transparent !important;
     border-radius: var(--radius-md);
     border: 1px solid rgba(255, 255, 255, 0.08);
     margin: var(--space-4) 0;
     padding: 0;
-    box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: none;
     position: relative;
     overflow: hidden;
 }
@@ -669,23 +671,29 @@ body {
     content: '';
     display: block;
     height: 32px;
-    background: rgba(255, 255, 255, 0.03);
+    background: transparent;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .markdown-body pre code {
     display: block;
-    padding: var(--space-4);
+    padding: var(--space-3) 0;
     color: #e4e4e7;
     font-family: var(--font-mono);
-    font-size: var(--text-sm);
+    font-size: var(--ai-font-size);
     line-height: 1.7;
     background: transparent !important;
+    background-color: transparent !important;
     overflow-x: auto;
     white-space: pre;
     font-weight: 400;
     letter-spacing: 0.2px;
 }
+
+.markdown-body .code-lines { display: block; min-width: max-content; }
+.markdown-body .code-line { display: grid; grid-template-columns: 3.5em minmax(0, 1fr); min-height: 1.7em; }
+.markdown-body .code-line-number { color: rgba(156, 163, 175, .5); text-align: right; padding: 0 var(--space-3); user-select: none; border-right: 1px solid rgba(255, 255, 255, .08); }
+.markdown-body .code-line-text { padding: 0 var(--space-4); white-space: pre; }
 
 /* Inline code styling */
 .markdown-body code:not(pre code) {
@@ -1470,4 +1478,35 @@ body {
     font-weight: bold;
     font-family: var(--font-mono);
     font-size: var(--text-base);
+}
+
+.code-wrap-enabled .markdown-body pre code {
+    white-space: pre-wrap;
+    overflow-x: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.code-wrap-enabled .markdown-body .code-lines { min-width: 0; }
+.code-wrap-enabled .markdown-body .code-line-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+
+/* 窄窗口适配：最小尺寸为 420×350 时，历史栏收窄、内容区域保持可读并允许滚动。 */
+@media (max-width: 700px) {
+    .top-bar-wrapper { padding: var(--space-2); }
+    .top-bar { gap: var(--space-2); max-width: 100%; overflow-x: auto; }
+    .top-bar .status-group { min-width: 0; flex: 1 1 auto; }
+    .main-interface { gap: var(--space-2); margin-top: var(--space-2); }
+    .left-panel { width: 112px; min-width: 112px; padding-right: var(--space-1); }
+    .right-panel { min-width: 0; flex: 1 1 auto; }
+    .markdown-body { padding-right: var(--space-1); overflow-x: hidden; }
+    .markdown-body pre code { overflow-x: auto; }
+    .code-wrap-enabled .markdown-body pre code { overflow-x: hidden; }
+    .screenshot-dock { margin: var(--space-2); }
+    .modal-content { width: calc(100vw - 20px); max-width: none; height: calc(100vh - 20px); padding: var(--space-3); }
+    .tabs { gap: var(--space-2); overflow-x: auto; white-space: nowrap; }
+}
+
+@media (max-width: 520px) {
+    .left-panel { display: none; }
+    .main-interface { margin-left: var(--space-2); margin-right: var(--space-2); }
+    .top-bar .status-group span:last-child { display: none; }
 }

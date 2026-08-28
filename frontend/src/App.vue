@@ -4,6 +4,24 @@
     :isMacOS="isMacOS"
     @openSettings="openSettings" @quit="quit" />
 
+  <!-- 发布版兼容：手动截图缓存面板（最多 3 张） -->
+  <div v-if="!settings.useLiveApi && pendingScreenshots.length > 0" class="screenshot-dock">
+    <div class="screenshot-dock-head">
+      <span>截图 {{ pendingScreenshots.length }}/3</span>
+      <button v-if="pendingScreenshots.length" class="screenshot-clear" @click="clearPendingScreenshots">清空</button>
+    </div>
+    <div v-if="pendingScreenshots.length" class="screenshot-thumbs">
+      <div v-for="(shot, idx) in pendingScreenshots" :key="idx" class="screenshot-thumb">
+        <img :src="shot" :alt="`截图 ${idx + 1}`" />
+        <button @click="removePendingScreenshot(idx)" :aria-label="`删除截图 ${idx + 1}`">×</button>
+      </div>
+    </div>
+    <div class="screenshot-actions">
+      <button @click="takeScreenshot" :disabled="pendingScreenshots.length >= 3 || isLoading">截图</button>
+      <button class="primary" @click="sendScreenshots" :disabled="isLoading">发送</button>
+    </div>
+  </div>
+
   <!-- Live API 模式优先 -->
   <LiveView v-if="settings.useLiveApi" />
 
@@ -77,11 +95,12 @@
   <SettingsModal :show="uiState.showSettings" :tempSettings="tempSettings" :tempShortcuts="tempShortcuts"
     :shortcutActions="shortcutActions" :recordingAction="recordingAction" :recordingText="recordingText"
     :availableModels="uiState.availableModels" :isLoadingModels="uiState.isLoadingModels"
+    :sttAvailableModels="uiState.sttAvailableModels" :isLoadingSTTModels="uiState.isLoadingSTTModels"
     :isTestingConnection="uiState.isTestingConnection" :connectionStatus="uiState.connectionStatus"
     :renderedPrompt="renderedPrompt" :resumeRawContent="resumeState.rawContent" :isResumeParsing="resumeState.isParsing"
     :isMacOS="isMacOS"
     v-model:activeTab="uiState.activeTab"
-    @close="closeSettings" @save="saveSettings" @refresh-models="refreshModels" @test-connection="testConnection"
+    @close="closeSettings" @save="saveSettings" @refresh-models="refreshModels" @refresh-stt-models="refreshSTTModels" @test-connection="testConnection"
     @record-key="recordKey" @select-resume="selectResume" @clear-resume="clearResume" @parse-resume="parseResume"
     @update:resumeRawContent="val => resumeState.rawContent = val" />
 
@@ -123,7 +142,7 @@ import EmptyState from './components/EmptyState.vue'
 import LiveView from './components/LiveView.vue'
 import ResizeHandle from './components/ResizeHandle.vue'
 import { EventsOn, Quit } from '../wailsjs/runtime/runtime'
-import { StopRecordingKey, SelectResume, ClearResume, RestoreFocus, RemoveFocus, ParseResume, GetInitStatus } from '../wailsjs/go/main/App'
+import { StopRecordingKey, SelectResume, ClearResume, RestoreFocus, RemoveFocus, ParseResume, GetInitStatus, TriggerScreenshot, TriggerSend, RemoveScreenshot, ClearScreenshots } from '../wailsjs/go/main/App'
 
 import { useUI } from './composables/useUI'
 import { useStatus } from './composables/useStatus'
@@ -141,6 +160,8 @@ const uiState = reactive({
   activeTab: 'general',
   availableModels: [],
   isLoadingModels: false,
+  sttAvailableModels: [],
+  isLoadingSTTModels: false,
   isModelDropdownOpen: false,
   promptTab: 'edit',
   isTestingConnection: false,
@@ -161,13 +182,28 @@ const settingsCallbacks = {}
 
 const {
   settings, tempSettings, renderedPrompt, maskedKey,
-  loadSettings, refreshModels, testConnection, fetchModels, saveSettings, resetTempSettings, openSettings: initSettings
+  loadSettings, refreshModels, refreshSTTModels, testConnection, fetchModels, saveSettings, resetTempSettings, openSettings: initSettings
 } = useSettings(shortcuts, tempShortcuts, uiState, settingsCallbacks)
+
+watch(() => settings.aiFontSize, (size) => {
+  const value = Math.min(32, Math.max(10, Number(size) || 14))
+  document.documentElement.style.setProperty('--ai-font-size', `${value}px`)
+}, { immediate: true })
+
+watch(() => settings.codeWrap, (enabled) => {
+  document.documentElement.classList.toggle('code-wrap-enabled', enabled === true)
+}, { immediate: true })
 
 const resumeState = reactive({
   rawContent: '',
   isParsing: false
 })
+
+const pendingScreenshots = ref([])
+async function takeScreenshot() { await TriggerScreenshot() }
+async function sendScreenshots() { await TriggerSend() }
+async function removePendingScreenshot(index) { await RemoveScreenshot(index) }
+async function clearPendingScreenshots() { await ClearScreenshots() }
 
 watch(() => resumeState.rawContent, (newVal) => {
   tempSettings.resumeContent = newVal || ''
@@ -291,6 +327,9 @@ function openSettings() {
   if (settings.apiKey) {
     fetchModels(settings.apiKey, settings.baseURL)
   }
+  if (tempSettings.sttEnabled && tempSettings.sttAPIKey && tempSettings.sttBaseURL) {
+    refreshSTTModels()
+  }
 
   // 加载简历内容
   if (settings.resumeContent) {
@@ -312,7 +351,7 @@ function closeSettings() {
   resetTempSettings()
 }
 
-const solveShortcut = computed(() => shortcuts.solve?.keyName || 'F8')
+const solveShortcut = computed(() => shortcuts.send?.keyName || shortcuts.solve?.keyName || 'F7')
 
 const initStatus = ref('initializing')
 // Lifecycle
@@ -375,6 +414,16 @@ onMounted(() => {
   // 接收用户截图用于导出功能
   EventsOn('user-message', (screenshot) => {
     setUserScreenshot(screenshot)
+  })
+
+  EventsOn('screenshot-taken', (screenshot) => {
+    if (screenshot && pendingScreenshots.value.length < 3) pendingScreenshots.value.push(screenshot)
+  })
+  EventsOn('screenshot-removed', (index) => {
+    if (Number.isInteger(index)) pendingScreenshots.value.splice(index, 1)
+  })
+  EventsOn('screenshots-cleared', () => {
+    pendingScreenshots.value = []
   })
 
   EventsOn('start-solving', () => {

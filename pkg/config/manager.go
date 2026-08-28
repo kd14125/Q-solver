@@ -2,6 +2,7 @@ package config
 
 import (
 	"Q-Solver/pkg/logger"
+	"Q-Solver/pkg/shortcut"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -65,7 +66,32 @@ func (cm *ConfigManager) Load() error {
 		// 直接反序列化到 config 上，会覆盖默认值
 		if err := json.Unmarshal(data, &cm.config); err != nil {
 			logger.Printf("解析配置文件失败: %v", err)
+		} else {
+			// 从旧版本迁移：solve 快捷键改名为 send，新增独立 screenshot 快捷键。
+			var raw struct {
+				Shortcuts map[string]shortcut.KeyBinding `json:"shortcuts"`
+			}
+			if json.Unmarshal(data, &raw) == nil && raw.Shortcuts != nil {
+				if _, hasScreenshot := raw.Shortcuts["screenshot"]; !hasScreenshot {
+					if old, ok := raw.Shortcuts["solve"]; ok {
+						cm.config.Shortcuts["screenshot"] = old
+					}
+				}
+				if old, ok := raw.Shortcuts["solve"]; ok {
+					cm.config.Shortcuts["send"] = shortcut.KeyBinding{ComboID: "118", KeyName: "F7"}
+					_ = old
+				}
+				delete(cm.config.Shortcuts, "solve")
+			}
 		}
+	}
+	// 旧版本配置没有 AI 字体和窗口尺寸字段时，补齐安全默认值。
+	if cm.config.AIFontSize < 10 || cm.config.AIFontSize > 32 {
+		cm.config.AIFontSize = 14
+	}
+	// 为旧版空 Prompt 配置补充通用解题提示词。
+	if cm.config.Prompt == "" {
+		cm.config.Prompt = DefaultPrompt
 	}
 
 	logger.Println("配置已加载")

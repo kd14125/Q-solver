@@ -29,7 +29,8 @@ type WindowState struct {
 
 // StateManager 管理应用全局状态
 type StateManager struct {
-	ctx context.Context
+	ctx    context.Context
+	moveMu sync.Mutex
 
 	// 窗口状态
 	windowState WindowState
@@ -238,7 +239,14 @@ func (sm *StateManager) RemoveFocus() {
 
 // MoveWindow 移动窗口
 func (sm *StateManager) MoveWindow(dx, dy int) {
-	if sm.ctx == nil {
+	sm.moveMu.Lock()
+	defer sm.moveMu.Unlock()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.Printf("移动窗口异常，已忽略: %v\n", recovered)
+		}
+	}()
+	if sm.ctx == nil || sm.ctx.Err() != nil {
 		return
 	}
 	x, y := runtime.WindowGetPosition(sm.ctx)

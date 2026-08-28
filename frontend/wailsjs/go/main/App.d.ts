@@ -5,6 +5,8 @@ import {config} from '../models';
 
 export function CancelRunningTask():Promise<boolean>;
 
+export function CaptureExamQuestion():Promise<string>;
+
 export function CheckMicrophoneAccess():Promise<number>;
 
 export function CheckScreenCapturePermission():Promise<boolean>;
@@ -17,9 +19,13 @@ export function EmitEvent(arg1:string,arg2:Array<any>):Promise<void>;
 
 export function GetInitStatus():Promise<string>;
 
+export function GetRegisteredTools():Promise<Array<string>>;
+
 export function GetModels(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function GetResumePDF():Promise<string>;
+
+export function GetSTTModels(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function GetScreenshotPreview(arg1:number,arg2:number,arg3:boolean,arg4:boolean,arg5:string):Promise<screen.PreviewResult>;
 
@@ -36,6 +42,12 @@ export function OpenScreenCaptureSettings():Promise<void>;
 export function ParseResume():Promise<string>;
 
 export function RemoveFocus():Promise<void>;
+
+export function RemoveScreenshot(arg1:number):Promise<void>;
+
+export function RemoveLastScreenshot():Promise<void>;
+
+export function ClearScreenshots():Promise<void>;
 
 export function RequestMicrophoneAccess():Promise<void>;
 
@@ -68,5 +80,9 @@ export function ToggleClickThrough():Promise<void>;
 export function ToggleVisibility():Promise<void>;
 
 export function TriggerSolve():Promise<void>;
+
+export function TriggerScreenshot():Promise<void>;
+
+export function TriggerSend():Promise<void>;
 
 export function UpdateSettings(arg1:string):Promise<string>;

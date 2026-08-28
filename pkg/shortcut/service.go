@@ -3,7 +3,6 @@ package shortcut
 import (
 	"Q-Solver/pkg/logger"
 	"fmt"
-	"maps"
 	"runtime"
 )
 
@@ -26,11 +25,11 @@ func NewService(delegate ServiceDelegate, initialShortcuts map[string]KeyBinding
 	s.manager.OnError = func(msg string) {}
 
 	// 初始化快捷键
-	maps.Copy(s.manager.Shortcuts, initialShortcuts)
+	s.manager.ReplaceShortcuts(initialShortcuts)
 
 	// 自注册配置变更回调
 	subscribe(func(shortcuts map[string]KeyBinding) {
-		maps.Copy(s.manager.Shortcuts, shortcuts)
+		s.manager.ReplaceShortcuts(shortcuts)
 		logger.Println("快捷键配置已更新")
 	})
 
@@ -46,11 +45,11 @@ func (s *Service) Stop() {
 }
 
 func (s *Service) GetShortcuts() map[string]KeyBinding {
-	return s.manager.Shortcuts
+	return s.manager.GetShortcuts()
 }
 
 func (s *Service) SetShortcuts(shortcuts map[string]KeyBinding) {
-	maps.Copy(s.manager.Shortcuts, shortcuts)
+	s.manager.ReplaceShortcuts(shortcuts)
 }
 
 func (s *Service) StartRecording(action string) {
@@ -68,9 +67,16 @@ func (s *Service) StopRecording() {
 
 func (s *Service) handleTrigger(action string) {
 	switch action {
+	case "screenshot":
+		logger.Println("触发截图")
+		s.delegate.TriggerScreenshot()
+	case "send":
+		logger.Println("发送截图并请求回答")
+		s.delegate.TriggerSend()
 	case "solve":
 		logger.Println("触发解题")
-		s.delegate.TriggerSolve()
+		// 兼容旧配置：旧版 solve 快捷键等价于发送截图。
+		s.delegate.TriggerSend()
 	case "toggle":
 		logger.Println("切换可见性")
 		s.delegate.ToggleVisibility()
@@ -99,17 +105,17 @@ func (s *Service) handleRecord(action string, keyName string, comboID string) {
 		"comboID": comboID,
 	})
 	logger.Printf("快捷键录制完成: %s -> %s->%s\n", action, keyName, comboID)
-	s.manager.Shortcuts[action] = KeyBinding{
+	s.manager.SetShortcut(action, KeyBinding{
 		ComboID: comboID,
 		KeyName: keyName,
-	}
+	})
 }
 
 func (s *Service) handleRecordingComplete(action string, keyName string, comboID string) {
 	// 检查冲突
 	conflict := false
 	conflictAction := ""
-	for act, binding := range s.manager.Shortcuts {
+	for act, binding := range s.manager.GetShortcuts() {
 		if binding.ComboID == comboID && act != action {
 			conflict = true
 			conflictAction = act

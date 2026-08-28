@@ -153,7 +153,7 @@ func (g *Graph) summarize(rounds []ChatRound) {
 		logger.Printf("Graph: 总结失败: %v", err)
 		return
 	}
-	logger.Println("导图总结回复 %s", response.Content)
+	logger.Printf("导图总结回复 %s", response.Content)
 	// 解析并添加节点
 	newNodes := g.parseResponse(response.Content, rounds)
 	for _, node := range newNodes {

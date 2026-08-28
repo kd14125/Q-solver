@@ -6,6 +6,10 @@ export function CancelRunningTask() {
   return window['go']['main']['App']['CancelRunningTask']();
 }
 
+export function CaptureExamQuestion() {
+  return window['go']['main']['App']['CaptureExamQuestion']();
+}
+
 export function CheckMicrophoneAccess() {
   return window['go']['main']['App']['CheckMicrophoneAccess']();
 }
@@ -30,12 +34,20 @@ export function GetInitStatus() {
   return window['go']['main']['App']['GetInitStatus']();
 }
 
+export function GetRegisteredTools() {
+  return window['go']['main']['App']['GetRegisteredTools']();
+}
+
 export function GetModels(arg1, arg2) {
   return window['go']['main']['App']['GetModels'](arg1, arg2);
 }
 
 export function GetResumePDF() {
   return window['go']['main']['App']['GetResumePDF']();
+}
+
+export function GetSTTModels(arg1, arg2) {
+  return window['go']['main']['App']['GetSTTModels'](arg1, arg2);
 }
 
 export function GetScreenshotPreview(arg1, arg2, arg3, arg4, arg5) {
@@ -68,6 +80,18 @@ export function ParseResume() {
 
 export function RemoveFocus() {
   return window['go']['main']['App']['RemoveFocus']();
+}
+
+export function RemoveScreenshot(arg1) {
+  return window['go']['main']['App']['RemoveScreenshot'](arg1);
+}
+
+export function RemoveLastScreenshot() {
+  return window['go']['main']['App']['RemoveLastScreenshot']();
+}
+
+export function ClearScreenshots() {
+  return window['go']['main']['App']['ClearScreenshots']();
 }
 
 export function RequestMicrophoneAccess() {
@@ -132,6 +156,14 @@ export function ToggleVisibility() {
 
 export function TriggerSolve() {
   return window['go']['main']['App']['TriggerSolve']();
+}
+
+export function TriggerScreenshot() {
+  return window['go']['main']['App']['TriggerScreenshot']();
+}
+
+export function TriggerSend() {
+  return window['go']['main']['App']['TriggerSend']();
 }
 
 export function UpdateSettings(arg1) {

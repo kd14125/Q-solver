@@ -39,12 +39,39 @@ type Config struct {
 	// Live API
 	UseLiveApi bool `json:"useLiveApi,omitempty"`
 
+	// 语音转文字（OpenAI-compatible /audio/transcriptions）
+	STTEnabled  bool   `json:"sttEnabled,omitempty"`
+	STTAPIKey   string `json:"sttAPIKey,omitempty"`
+	STTBaseURL  string `json:"sttBaseURL,omitempty"`
+	STTModel    string `json:"sttModel,omitempty"`
+	STTLanguage string `json:"sttLanguage,omitempty"`
+	VoiceReply  bool   `json:"voiceReply,omitempty"`
+
 	// 窗口尺寸
-	WindowWidth  int `json:"windowWidth,omitempty"`
-	WindowHeight int `json:"windowHeight,omitempty"`
+	WindowWidth  int  `json:"windowWidth,omitempty"`
+	WindowHeight int  `json:"windowHeight,omitempty"`
+	AIFontSize   int  `json:"aiFontSize,omitempty"`
+	CodeWrap     bool `json:"codeWrap,omitempty"`
 }
 
 const DefaultModel = "gemini-2.5-flash"
+
+const DefaultPrompt = `你是一名严谨、高效的通用解题助手。请准确识别用户提供的题目（包括截图中的文字、代码、公式和选项），直接围绕题目作答。
+
+回答规则：
+1. 先判断题目是否属于编程/算法题。
+2. 如果是编程或算法题：
+   - 先用“思路”简要说明核心方法、关键步骤和必要的边界情况，不要冗长展开。
+   - 再用“代码实现”给出完整、可运行的代码，禁止只给伪代码或零散片段。
+   - 优先使用题目指定的编程语言；题目未指定时默认使用 Python。
+   - 保留题目要求的类名、函数名、输入输出格式，并补齐必要的 import、类型和入口代码。
+   - 最后简要给出时间复杂度和空间复杂度。
+3. 如果不是编程题：
+   - 先用“原因”或“解析”简要说明判断依据、计算过程或关键知识点。
+   - 最后用“答案”明确给出最终结论；选择题同时写出选项编号和选项内容。
+4. 对数学题保留必要推导和单位；对判断题说明关键依据；对简答题突出得分点。
+5. 如果题目信息不完整或截图不清晰，先指出缺失信息，再基于可见内容给出最合理的假设和答案，不要编造题目条件。
+6. 默认使用简体中文回答，表达清晰、精炼，避免与解题无关的客套话。`
 
 func NewDefaultConfig() Config {
 	return Config{
@@ -52,7 +79,7 @@ func NewDefaultConfig() Config {
 		Model:              DefaultModel,
 		BaseURL:            "",
 		ResumePath:         "",
-		Prompt:             "",
+		Prompt:             DefaultPrompt,
 		Opacity:            1.0,
 		KeepContext:        false,
 		InterruptThinking:  false,
@@ -79,11 +106,17 @@ func NewDefaultConfig() Config {
 		AssistantModel: "",
 
 		// Live API
-		UseLiveApi: false,
+		UseLiveApi:  false,
+		STTEnabled:  false,
+		STTModel:    "whisper-1",
+		STTLanguage: "zh",
+		VoiceReply:  true,
 
 		// 窗口尺寸默认值
 		WindowWidth:  0,
 		WindowHeight: 0,
+		AIFontSize:   14,
+		CodeWrap:     false,
 	}
 }
 
@@ -92,9 +125,10 @@ func getDefaultShortcuts() map[string]shortcut.KeyBinding {
 	if runtime.GOOS == "darwin" {
 		// macOS 使用简化的快捷键（不依赖 Windows VK 码）
 		return map[string]shortcut.KeyBinding{
-			"solve":        {ComboID: "Cmd+1", KeyName: "⌘1"},
-			"toggle":       {ComboID: "Cmd+2", KeyName: "⌘2"},
-			"clickthrough": {ComboID: "Cmd+3", KeyName: "⌘3"},
+			"screenshot":   {ComboID: "Cmd+1", KeyName: "⌘1"},
+			"send":         {ComboID: "Cmd+2", KeyName: "⌘2"},
+			"toggle":       {ComboID: "Cmd+3", KeyName: "⌘3"},
+			"clickthrough": {ComboID: "Cmd+4", KeyName: "⌘4"},
 			"move_up":      {ComboID: "Cmd+Option+Up", KeyName: "⌘⌥↑"},
 			"move_down":    {ComboID: "Cmd+Option+Down", KeyName: "⌘⌥↓"},
 			"move_left":    {ComboID: "Cmd+Option+Left", KeyName: "⌘⌥←"},
@@ -105,7 +139,8 @@ func getDefaultShortcuts() map[string]shortcut.KeyBinding {
 	}
 	// Windows 默认快捷键
 	return map[string]shortcut.KeyBinding{
-		"solve":        {ComboID: "119", KeyName: "F8"},
+		"screenshot":   {ComboID: "119", KeyName: "F8"},
+		"send":         {ComboID: "118", KeyName: "F7"},
 		"toggle":       {ComboID: "120", KeyName: "F9"},
 		"clickthrough": {ComboID: "121", KeyName: "F10"},
 		"move_up":      {ComboID: "38+164", KeyName: "Alt+↑"},
@@ -131,6 +166,9 @@ func (c *Config) Validate() error {
 	}
 	if c.CompressionQuality < 1 || c.CompressionQuality > 100 {
 		return &ValidationError{Field: "compressionQuality", Message: "压缩质量必须在 1-100 之间"}
+	}
+	if c.AIFontSize < 10 || c.AIFontSize > 32 {
+		return &ValidationError{Field: "aiFontSize", Message: "AI 字体大小必须在 10-32 之间"}
 	}
 	return nil
 }

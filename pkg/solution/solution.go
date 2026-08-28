@@ -16,6 +16,7 @@ type Callbacks struct {
 type Request struct {
 	Config           config.Config
 	ScreenshotBase64 string
+	Screenshots      []string
 	ResumeBase64     string
 }
 
@@ -63,9 +64,16 @@ func (s *Solver) Solve(ctx context.Context, req Request, cb Callbacks) bool {
 		systemPrompt.WriteString(req.Config.ResumeContent)
 	}
 
-	// 3. 构建当前用户消息（包含截图）
-	userParts := []llm.ContentPart{
-		llm.ImagePart(req.ScreenshotBase64),
+	// 3. 构建当前用户消息（支持发布版的多图缓存）
+	screenshots := req.Screenshots
+	if len(screenshots) == 0 && req.ScreenshotBase64 != "" {
+		screenshots = []string{req.ScreenshotBase64}
+	}
+	userParts := make([]llm.ContentPart, 0, len(screenshots)+2)
+	for _, screenshot := range screenshots {
+		if screenshot != "" {
+			userParts = append(userParts, llm.ImagePart(screenshot))
+		}
 	}
 
 	// 如果使用 PDF 简历，将简历附件加入用户消息

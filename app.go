@@ -11,11 +11,14 @@ import (
 	"Q-Solver/pkg/shortcut"
 	"Q-Solver/pkg/solution"
 	"Q-Solver/pkg/state"
+	"Q-Solver/pkg/stt"
 	"Q-Solver/pkg/task"
+	"Q-Solver/pkg/tools"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -36,6 +39,11 @@ type App struct {
 	screenService   *screen.Service
 	solver          *solution.Solver
 	liveManager     *live.LiveSessionManager
+	toolRegistry    *tools.Registry
+
+	// 手动截图缓存（发布版兼容：最多 3 张）
+	screenshotMu     sync.Mutex
+	screenshotBuffer []string
 }
 
 // NewApp 创建 App 实例
@@ -47,9 +55,24 @@ func NewApp() *App {
 		stateManager:  state.NewStateManager(),
 		taskManager:   task.NewTaskCoordinator(),
 		screenService: screen.NewService(),
+		toolRegistry:  tools.DefaultRegistry,
 	}
 
 	return app
+}
+
+// GetRegisteredTools 返回已装载到最终程序中的工具名称。
+func (a *App) GetRegisteredTools() []string {
+	return a.toolRegistry.List()
+}
+
+// CaptureExamQuestion 执行发布版的截图工具并返回 data URL。
+func (a *App) CaptureExamQuestion() (string, error) {
+	result := a.toolRegistry.Execute(&tools.ToolContext{Ctx: a.ctx}, "manual", "get_exam_question")
+	if result.Error != nil {
+		return "", result.Error
+	}
+	return "data:" + result.ImageMimeType + ";base64," + base64.StdEncoding.EncodeToString(result.ImageData), nil
 }
 
 // Startup Wails 启动回调
@@ -223,22 +246,114 @@ func (a *App) TriggerSolve() {
 		return
 	}
 
+	a.TriggerSend()
+}
+
+const maxScreenshots = 3
+
+// TriggerScreenshot 截取并缓存一张图片。
+func (a *App) TriggerScreenshot() {
+	cfg := a.configManager.Get()
+	if cfg.UseLiveApi {
+		a.EmitEvent("toast", "当前模式不支持手动截图")
+		return
+	}
+	if cfg.APIKey == "" {
+		a.EmitEvent("require-login")
+		return
+	}
+	a.screenshotMu.Lock()
+	count := len(a.screenshotBuffer)
+	a.screenshotMu.Unlock()
+	if count >= maxScreenshots {
+		a.EmitEvent("toast", "最多截图 3 张图片，请先发送或删除")
+		return
+	}
+	preview, err := a.GetScreenshotPreview(cfg.CompressionQuality, cfg.Sharpening, cfg.Grayscale, cfg.NoCompression, cfg.ScreenshotMode)
+	if err != nil {
+		a.EmitEvent("toast", "截图失败: "+err.Error())
+		return
+	}
+	a.screenshotMu.Lock()
+	a.screenshotBuffer = append(a.screenshotBuffer, preview.Base64)
+	count = len(a.screenshotBuffer)
+	a.screenshotMu.Unlock()
+	a.EmitEvent("screenshot-taken", preview.Base64, count)
+}
+
+// RemoveScreenshot 删除指定索引的缓存截图。
+func (a *App) RemoveScreenshot(index int) {
+	a.screenshotMu.Lock()
+	if index < 0 || index >= len(a.screenshotBuffer) {
+		a.screenshotMu.Unlock()
+		return
+	}
+	a.screenshotBuffer = append(a.screenshotBuffer[:index], a.screenshotBuffer[index+1:]...)
+	count := len(a.screenshotBuffer)
+	a.screenshotMu.Unlock()
+	a.EmitEvent("screenshot-removed", index, count)
+}
+
+// RemoveLastScreenshot 删除最后一张缓存截图。
+func (a *App) RemoveLastScreenshot() {
+	a.screenshotMu.Lock()
+	if len(a.screenshotBuffer) == 0 {
+		a.screenshotMu.Unlock()
+		return
+	}
+	index := len(a.screenshotBuffer) - 1
+	a.screenshotBuffer = a.screenshotBuffer[:index]
+	count := len(a.screenshotBuffer)
+	a.screenshotMu.Unlock()
+	a.EmitEvent("screenshot-removed", index, count)
+}
+
+// ClearScreenshots 清空缓存截图。
+func (a *App) ClearScreenshots() {
+	a.screenshotMu.Lock()
+	a.screenshotBuffer = nil
+	a.screenshotMu.Unlock()
+	a.EmitEvent("screenshots-cleared")
+}
+
+// TriggerSend 发送缓存截图；无缓存时自动截图后发送。
+func (a *App) TriggerSend() {
+	cfg := a.configManager.Get()
+	if cfg.UseLiveApi {
+		a.EmitEvent("toast", "当前模式不支持手动截图")
+		return
+	}
+	if cfg.APIKey == "" {
+		a.EmitEvent("require-login")
+		return
+	}
+	if a.taskManager.HasRunningTask() {
+		a.EmitEvent("toast", "正在处理中，请稍候...")
+		return
+	}
+	a.screenshotMu.Lock()
+	needCapture := len(a.screenshotBuffer) == 0
+	a.screenshotMu.Unlock()
+	if needCapture {
+		a.EmitEvent("toast", "请先使用截图快捷键截取 1-3 张图片")
+		return
+	}
+	a.screenshotMu.Lock()
+	screenshots := append([]string(nil), a.screenshotBuffer...)
+	a.screenshotBuffer = nil
+	a.screenshotMu.Unlock()
+	if len(screenshots) == 0 {
+		return
+	}
+	a.EmitEvent("screenshots-cleared")
 	a.EmitEvent("start-solving")
-
-	// 使用任务协调器管理任务
+	a.EmitEvent("user-message", screenshots[0])
 	ctx, taskID := a.taskManager.StartTask("solve")
-
-	go func() {
-		success := a.solveInternal(ctx)
-
-		if success {
-			a.taskManager.CompleteTask(taskID)
-		}
-	}()
+	go func() { defer a.taskManager.CompleteTask(taskID); a.solveInternal(ctx, screenshots) }()
 }
 
 // solveInternal 内部解题逻辑
-func (a *App) solveInternal(ctx context.Context) bool {
+func (a *App) solveInternal(ctx context.Context, screenshots []string) bool {
 	cfg := a.configManager.Get()
 
 	if cfg.APIKey == "" {
@@ -252,26 +367,10 @@ func (a *App) solveInternal(ctx context.Context) bool {
 		logger.Printf("读取简历失败: %v\n", err)
 	}
 
-	// 获取截图
-	previewResult, err := a.GetScreenshotPreview(
-		cfg.CompressionQuality,
-		cfg.Sharpening,
-		cfg.Grayscale,
-		cfg.NoCompression,
-		cfg.ScreenshotMode,
-	)
-	if err != nil {
-		logger.Printf("图片编码失败: %v\n", err)
-		return false
-	}
-
-	// 发送用户截图到前端（用于导出图片显示用户输入）
-	a.EmitEvent("user-message", previewResult.Base64)
-
 	req := solution.Request{
-		Config:           cfg,
-		ScreenshotBase64: previewResult.Base64,
-		ResumeBase64:     resumeBase64,
+		Config:       cfg,
+		Screenshots:  screenshots,
+		ResumeBase64: resumeBase64,
 	}
 
 	cb := solution.Callbacks{
@@ -430,6 +529,16 @@ func (a *App) GetModels(apiKey string, baseURL string) ([]string, error) {
 		ctx = context.Background()
 	}
 	return a.llmService.GetModels(ctx, apiKey, baseURL)
+}
+
+// GetSTTModels 获取语音转文字 API 提供的模型列表。
+func (a *App) GetSTTModels(apiKey string, baseURL string) ([]string, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	client := stt.Client{APIKey: apiKey, BaseURL: baseURL}
+	return client.GetModels(ctx)
 }
 
 // ==================== 导出相关 ====================

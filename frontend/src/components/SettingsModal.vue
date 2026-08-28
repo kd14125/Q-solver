@@ -125,6 +125,55 @@
                   <span class="slider round"></span>
                 </label>
               </div>
+
+			  <div class="setting-row" style="margin-top: 12px;">
+				<div class="setting-info">
+				  <span class="setting-title">使用第三方语音转文字</span>
+				  <span class="setting-desc">每 5 秒上传一次系统声音，再复用当前文本模型回答</span>
+				</div>
+				<label class="switch">
+				  <input type="checkbox" v-model="tempSettings.sttEnabled">
+				  <span class="slider round"></span>
+				</label>
+			  </div>
+			  <template v-if="tempSettings.sttEnabled">
+				<div class="form-group" style="margin-top: 12px;">
+				  <label>语音转文字 API 地址</label>
+				  <input class="form-input" v-model.trim="tempSettings.sttBaseURL" placeholder="例如 https://api.openai.com/v1" />
+				  <p class="hint-text">兼容 OpenAI /audio/transcriptions，也可直接填写完整接口地址</p>
+				</div>
+				<div class="form-group">
+				  <label>语音转文字 API Key</label>
+				  <input class="form-input" type="password" v-model="tempSettings.sttAPIKey" autocomplete="off" />
+				</div>
+				<div class="form-group">
+				  <div class="model-header">
+					<label>语音识别模型</label>
+					<button class="btn-icon" @click="$emit('refresh-stt-models')"
+					  :disabled="isLoadingSTTModels || !tempSettings.sttAPIKey || !tempSettings.sttBaseURL"
+					  title="刷新语音识别模型列表">
+					  <svg class="action-icon" :class="{ spin: isLoadingSTTModels }" viewBox="0 0 16 16" fill="none">
+						<path d="M14 8a6 6 0 01-10.24 4.24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+						<path d="M2 8a6 6 0 0110.24-4.24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+						<path d="M14 3v5h-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+						<path d="M2 13V8h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+					  </svg>
+					</button>
+				  </div>
+				  <ModelSelect v-if="sttAvailableModels.length" v-model="tempSettings.sttModel"
+					:models="sttAvailableModels" :loading="isLoadingSTTModels" placeholder="选择语音识别模型" />
+				  <input class="form-input" v-model.trim="tempSettings.sttModel" placeholder="whisper-1" />
+				  <p class="hint-text">支持从接口获取模型列表，也可手动填写中转站模型 ID</p>
+				</div>
+				<div class="form-group">
+				  <label>识别语言</label>
+				  <input class="form-input" v-model.trim="tempSettings.sttLanguage" placeholder="zh" />
+				</div>
+				<div class="setting-row">
+				  <div class="setting-info"><span class="setting-title">朗读回答</span><span class="setting-desc">使用 Windows/WebView 系统语音朗读 AI 回答</span></div>
+				  <label class="switch"><input type="checkbox" v-model="tempSettings.voiceReply"><span class="slider round"></span></label>
+				</div>
+			  </template>
             </div>
           </div>
 
@@ -147,6 +196,26 @@
             <label for="opacity-slider">窗口透明度: <span>{{ Math.round(tempSettings.transparency * 100) }}%</span></label>
             <input type="range" id="opacity-slider" min="0.0" max="1.0" step="0.05"
               v-model.number="tempSettings.transparency" />
+          </div>
+
+          <div class="form-group">
+            <label for="ai-font-size">AI 回复字体大小: <span>{{ tempSettings.aiFontSize }}px</span></label>
+            <input type="range" id="ai-font-size" min="10" max="32" step="1"
+              v-model.number="tempSettings.aiFontSize" />
+            <p class="hint-text">只调整 AI 回复正文和代码块字体，不影响设置界面。</p>
+          </div>
+
+          <div class="form-group">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-title">代码块自动换行</span>
+                <span class="setting-desc">开启后代码过长时自动折行，不需要左右滚动</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" v-model="tempSettings.codeWrap">
+                <span class="slider round"></span>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -186,6 +255,11 @@ const props = defineProps({
   recordingText: String,
   availableModels: Array,
   isLoadingModels: Boolean,
+  sttAvailableModels: {
+    type: Array,
+    default: () => []
+  },
+  isLoadingSTTModels: Boolean,
   isTestingConnection: Boolean,
   connectionStatus: Object,
   renderedPrompt: String,
@@ -202,6 +276,7 @@ const emit = defineEmits([
   'close',
   'save',
   'refresh-models',
+  'refresh-stt-models',
   'test-connection',
   'record-key',
   'select-resume',

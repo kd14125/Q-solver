@@ -149,7 +149,7 @@ import { marked } from 'marked'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
-import { StartLiveSession, StopLiveSession } from '../../wailsjs/go/main/App'
+import { StartLiveSession, StopLiveSession, GetSettings } from '../../wailsjs/go/main/App'
 import QuestionNode from './QuestionNode.vue'
 
 // Vue Flow 节点类型
@@ -181,6 +181,8 @@ const chatContainer = ref(null)
 const treeContainer = ref(null)
 const messages = ref([])
 const highlightMsgId = ref(null)
+const voiceReplyEnabled = ref(false)
+let pendingSpeech = ''
 
 // 问题导图数据
 const treeNodes = ref([])  // 原始节点数据
@@ -548,6 +550,7 @@ function onLiveAiText(text) {
     messages.value.push(newMsg)
   }
   scrollToBottom()
+	if (voiceReplyEnabled.value) pendingSpeech += text
 }
 
 function onLiveError(err) {
@@ -558,6 +561,13 @@ function onLiveError(err) {
 function onLiveDone() {
   const lastMsg = messages.value[messages.value.length - 1]
   if (lastMsg) lastMsg.isComplete = true
+	if (voiceReplyEnabled.value && pendingSpeech.trim() && 'speechSynthesis' in window) {
+		window.speechSynthesis.cancel()
+		const utterance = new SpeechSynthesisUtterance(pendingSpeech.replace(/[`#*_>-]/g, ' '))
+		utterance.lang = 'zh-CN'
+		window.speechSynthesis.speak(utterance)
+	}
+	pendingSpeech = ''
 }
 
 function onLiveInterrupted() {
@@ -592,6 +602,12 @@ function stopTimer() {
 
 // ===== 生命周期 =====
 onMounted(async () => {
+	try {
+		const cfg = await GetSettings()
+		voiceReplyEnabled.value = !!(cfg.sttEnabled && cfg.voiceReply)
+	} catch (e) {
+		console.warn('读取语音回复设置失败', e)
+	}
   // Live API 事件
   EventsOn('live:status', onLiveStatus)
   EventsOn('live:transcript', onLiveTranscript)
@@ -610,6 +626,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+	if ('speechSynthesis' in window) window.speechSynthesis.cancel()
   StopLiveSession()
   stopTimer()
   

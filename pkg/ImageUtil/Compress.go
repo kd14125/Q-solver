@@ -10,6 +10,11 @@ import (
 
 // CompressForOCR 接收原始图片，返回压缩后的 JPEG 字节流
 func CompressForOCR(originalImg image.Image, quality int, sharpen float64, Grayscale bool) ([]byte, error) {
+	return CompressForOCRWithMaxSize(originalImg, quality, sharpen, Grayscale, 2000)
+}
+
+// CompressForOCRWithMaxSize 允许工具调用按场景限制最长边。
+func CompressForOCRWithMaxSize(originalImg image.Image, quality int, sharpen float64, Grayscale bool, maxDimension int) ([]byte, error) {
 	// 1. 获取原始尺寸
 	bounds := originalImg.Bounds()
 	width := bounds.Dx()
@@ -18,7 +23,9 @@ func CompressForOCR(originalImg image.Image, quality int, sharpen float64, Grays
 	// 2. 调整大小 (Resize)
 	// 策略：如果长边超过 2000px，就等比例缩小到 2000px
 	// 2000px 对于绝大多数 OCR 场景已经足够清晰，且能显著减少 Token 消耗
-	maxDimension := 2000
+	if maxDimension <= 0 {
+		maxDimension = 2000
+	}
 	var processedImg image.Image = originalImg
 
 	if width > maxDimension || height > maxDimension {

@@ -1,6 +1,6 @@
 import { reactive, computed, watch } from 'vue'
 import { marked } from 'marked'
-import { GetSettings, SyncSettingsToDefaultSettings, GetModels, TestConnection } from '../../wailsjs/go/main/App'
+import { GetSettings, SyncSettingsToDefaultSettings, GetModels, GetSTTModels, TestConnection } from '../../wailsjs/go/main/App'
 
 /**
  * 配置管理 composable
@@ -27,12 +27,22 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     grayscale: true,
     noCompression: false,
     useLiveApi: false,
+	sttEnabled: false,
+	sttAPIKey: '',
+	sttBaseURL: '',
+	sttModel: 'whisper-1',
+	sttLanguage: 'zh',
+	voiceReply: true,
     // LLM 生成参数
     temperature: 1.0,
     topP: 0.95,
     topK: 40,
     maxTokens: 8192,
-    thinkingBudget: 16000
+    thinkingBudget: 16000,
+    aiFontSize: 14,
+    codeWrap: false,
+    windowWidth: 0,
+    windowHeight: 0,
   })
 
   // 临时编辑的配置（用于设置面板）
@@ -116,12 +126,22 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     settings.useMarkdownResume = config.useMarkdownResume || false
     settings.screenshotMode = config.screenshotMode || 'window'
     settings.useLiveApi = config.useLiveApi || false
+	settings.sttEnabled = config.sttEnabled || false
+	settings.sttAPIKey = config.sttAPIKey || ''
+	settings.sttBaseURL = config.sttBaseURL || ''
+	settings.sttModel = config.sttModel || 'whisper-1'
+	settings.sttLanguage = config.sttLanguage || 'zh'
+	settings.voiceReply = config.voiceReply !== undefined ? config.voiceReply : true
     // LLM 生成参数
     settings.temperature = config.temperature !== undefined ? config.temperature : 1.0
     settings.topP = config.topP !== undefined ? config.topP : 0.95
     settings.topK = config.topK !== undefined ? config.topK : 40
     settings.maxTokens = config.maxTokens !== undefined ? config.maxTokens : 8192
     settings.thinkingBudget = config.thinkingBudget !== undefined ? config.thinkingBudget : 16000
+    settings.aiFontSize = Math.min(32, Math.max(10, Number(config.aiFontSize) || 14))
+    settings.codeWrap = config.codeWrap === true
+    settings.windowWidth = Number(config.windowWidth) || 0
+    settings.windowHeight = Number(config.windowHeight) || 0
 
     // 透明度转换：opacity 来自后端，默认 1.0（完全不透明）
     // transparency = 1 - opacity，所以 opacity=1 时 transparency=0
@@ -151,6 +171,34 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     await fetchModels(tempSettings.apiKey, tempSettings.baseURL)
     if (uiState.availableModels.length > 0) {
       if (callbacks.showToast) callbacks.showToast(`已加载 ${uiState.availableModels.length} 个模型`, 'success')
+    }
+  }
+
+  /** 刷新语音转文字模型列表 */
+  async function refreshSTTModels() {
+    if (!tempSettings.sttAPIKey || !tempSettings.sttBaseURL) {
+      if (callbacks.showToast) callbacks.showToast('请先填写语音转文字 API Key 和地址', 'warning')
+      return
+    }
+    uiState.isLoadingSTTModels = true
+    try {
+      const models = await GetSTTModels(tempSettings.sttAPIKey, tempSettings.sttBaseURL)
+      if (models && models.length > 0) {
+        uiState.sttAvailableModels = models
+        if (!tempSettings.sttModel || tempSettings.sttModel === 'auto') {
+          tempSettings.sttModel = models[0]
+        }
+        if (callbacks.showToast) callbacks.showToast(`已加载 ${models.length} 个语音识别模型`, 'success')
+      } else {
+        uiState.sttAvailableModels = []
+        if (callbacks.showToast) callbacks.showToast('接口未返回可用模型，请手动填写模型 ID', 'warning')
+      }
+    } catch (e) {
+      uiState.sttAvailableModels = []
+      console.error('获取语音识别模型列表失败', e)
+      if (callbacks.showToast) callbacks.showToast(`获取语音识别模型失败: ${e?.message || e}`, 'error')
+    } finally {
+      uiState.isLoadingSTTModels = false
     }
   }
 
@@ -243,12 +291,22 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
         useMarkdownResume: tempSettings.useMarkdownResume,
         provider: tempSettings.provider,
         useLiveApi: tempSettings.useLiveApi,
+		sttEnabled: tempSettings.sttEnabled,
+		sttAPIKey: tempSettings.sttAPIKey,
+		sttBaseURL: tempSettings.sttBaseURL,
+		sttModel: tempSettings.sttModel,
+		sttLanguage: tempSettings.sttLanguage,
+		voiceReply: tempSettings.voiceReply,
         // LLM 生成参数
         temperature: tempSettings.temperature,
         topP: tempSettings.topP,
         topK: tempSettings.topK,
         maxTokens: tempSettings.maxTokens,
         thinkingBudget: tempSettings.thinkingBudget,
+        aiFontSize: tempSettings.aiFontSize,
+        codeWrap: tempSettings.codeWrap,
+        windowWidth: settings.windowWidth || 0,
+        windowHeight: settings.windowHeight || 0,
         shortcuts: tempShortcuts
       }
 
@@ -305,6 +363,9 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     if (settings.apiKey) {
       fetchModels(settings.apiKey, settings.baseURL)
     }
+    if (settings.sttEnabled && settings.sttAPIKey && settings.sttBaseURL) {
+      refreshSTTModels()
+    }
   }
 
   return {
@@ -314,6 +375,7 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     maskedKey,
     loadSettings,
     refreshModels,
+    refreshSTTModels,
     testConnection,
     fetchModels,
     saveSettings,
