@@ -19,7 +19,6 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS">
     <img src="https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows">
   </p>
 
@@ -59,6 +58,9 @@
 - **稳定性修复**：修复方向移动快捷键引起的闪退，并加强音频、WebSocket 和协程生命周期管理。
 
 完整记录请查看 [CHANGELOG.md](CHANGELOG.md)。
+
+> [!NOTE]
+> 当前增强版只构建、发布和维护 Windows 版本。
 
 <br>
 
@@ -144,14 +146,7 @@
 
 ### 📥 方式一：直接下载 (如果你想直接使用)
 
-前往 [Releases 页面](https://github.com/kd14125/Q-solver/releases) 下载对应系统的最新安装包。
-
-> [!NOTE]
-> **macOS 用户提示**：首次运行时如果提示“已损坏”或无法打开，请执行以下命令：
-> ```bash
-> xattr -cr /Applications/Q-Solver.app
-> chmod +x /Applications/Q-Solver.app/Contents/MacOS/Q-Solver
-> ```
+前往 [Releases 页面](https://github.com/kd14125/Q-solver/releases) 下载最新的 Windows 版本。
 
 ### 🛠️ 方式二：源码构建 (如果你是开发者)
 
@@ -176,16 +171,16 @@ wails build -ldflags "-s -w" -tags prod
 
 ## ⌨️ 快捷键指南
 
-> 💡 **提示**：目前 macOS 快捷键固定，Windows 支持自定义快捷键（下表为默认按键）。
+> 💡 **提示**：Windows 支持自定义快捷键，下表为默认按键。
 
-| 动作 | Windows | macOS |
-|:---|:---:|:---:|
-| **截图（可连续 1–3 张）** 📸 | `F8` | `⌘ + 1` |
-| **发送截图并请求回答** 🤖 | `F7` | `⌘ + 2` |
-| **显示/隐藏窗口** 👁️ | `F9` | `⌘ + 3` |
-| **切换鼠标穿透** 👻 | `F10` | `⌘ + 4` |
-| **微调窗口位置** ↕️ | `Alt + 方向键` | `⌘⌥ + 方向键` |
-| **快速翻页** 📜 | `Alt + PgUp/Dn` | `⌘⌥⇧ + ↑/↓` |
+| 动作 | Windows 默认快捷键 |
+|:---|:---:|
+| **截图（可连续 1–3 张）** 📸 | `F8` |
+| **发送截图并请求回答** 🤖 | `F7` |
+| **显示/隐藏窗口** 👁️ | `F9` |
+| **切换鼠标穿透** 👻 | `F10` |
+| **微调窗口位置** ↕️ | `Alt + 方向键` |
+| **快速翻页** 📜 | `Alt + PgUp/Dn` |
 
 <br>
 
@@ -200,47 +195,12 @@ wails build -ldflags "-s -w" -tags prod
 > [!IMPORTANT]
 > API Key 仅应填写在本机设置中。不要把 API Key 写入 README、截图、Issue 或提交到 Git 仓库。
 
-### 🍎 macOS 特别配置
-
-macOS 需要额外权限以发挥完整功能：
-
-<details>
-<summary><b>🔐 屏幕录制权限 (必选)</b></summary>
-
-为了实现截图功能，首次使用时：
-1. 系统会弹窗提示请求 **屏幕录制** 权限。
-2. 若未弹窗，请前往 **系统设置** -> **隐私与安全性** -> **屏幕录制**。
-3. 勾选 **Q-Solver**。
-4. **重启应用** 生效。
-
-</details>
-
-<details>
-<summary><b>🎙️ 系统音频内录 (Live API 必选)</b></summary>
-
-若想让 AI 听到电脑播放的声音（如会议内容），需要安装虚拟声卡：
-
-1. 安装 [BlackHole](https://github.com/ExistentialAudio/BlackHole):
-   ```bash
-   brew install blackhole-2ch
-   ```
-2. 打开 **音频 MIDI 设置 (Audio MIDI Setup)**。
-3. 创建 **多输出设备 (Multi-Output Device)**，同时勾选 **扬声器** 和 **BlackHole 2ch**。
-4. 将该多输出设备设为系统默认输出。
-5. 在 Q-Solver 设置中，确保音频输入包含 BlackHole。
-
-<img src="assets/img5.png" width="90%" style="border-radius: 8px;"/>
-
-</details>
-
-<br>
-
 ## 🛠️ 技术栈概览
 
 - **Core**: [Go](https://go.dev/) (Logic) + [Wails](https://wails.io/) (Binding)
 - **UI**: [Vue 3](https://vuejs.org/) + [Vue Flow](https://vueflow.dev/) (Mind Map)
 - **AI**: Qwen Realtime, Gemini Protocol, OpenAI-compatible API
-- **Audio**: Windows WASAPI Loopback（via malgo）、macOS BlackHole
+- **Audio**: Windows WASAPI Loopback（via malgo）
 
 <br>
 

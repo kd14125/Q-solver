@@ -18,7 +18,6 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS">
     <img src="https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows">
   </p>
 
@@ -126,14 +125,7 @@ Designed for privacy and multitasking, offering a "Ghost Window" experience.
 
 ### 📥 Option 1: Download App (Recommended)
 
-Get the latest installer for your OS from the [Releases Page](https://github.com/kd14125/Q-solver/releases).
-
-> [!NOTE]
-> **macOS Notice**: If you see a "Damage" or "Unidentified Developer" warning, run:
-> ```bash
-> xattr -cr /Applications/Q-Solver.app
-> chmod +x /Applications/Q-Solver.app/Contents/MacOS/Q-Solver
-> ```
+Get the latest Windows build from the [Releases Page](https://github.com/kd14125/Q-solver/releases). This enhanced fork currently builds and maintains Windows only.
 
 ### 🛠️ Option 2: Build from Source
 
@@ -158,15 +150,16 @@ wails build -ldflags "-s -w" -tags prod
 
 ## ⌨️ Shortcuts
 
-> 💡 **Tip**: Shortcuts are currently fixed on macOS. Windows supports custom shortcuts (defaults below).
+> 💡 **Tip**: Windows shortcuts are customizable. Defaults are shown below.
 
-| Action | Windows | macOS |
-|:---|:---:|:---:|
-| **Snapshot & Solve** 📸 | `F8` | `⌘ + 1` |
-| **Toggle Visibility** 👁️ | `F9` | `⌘ + 2` |
-| **Toggle Click-Through** 👻 | `F10` | `⌘ + 3` |
-| **Nudge Window** ↕️ | `Alt + Arrows` | `⌘⌥ + Arrows` |
-| **Fast Scroll** 📜 | `Alt + PgUp/Dn` | `⌘⌥⇧ + ↑/↓` |
+| Action | Windows Default |
+|:---|:---:|
+| **Capture screenshot (1–3)** 📸 | `F8` |
+| **Send screenshots and request answer** 🤖 | `F7` |
+| **Toggle Visibility** 👁️ | `F9` |
+| **Toggle Click-Through** 👻 | `F10` |
+| **Nudge Window** ↕️ | `Alt + Arrows` |
+| **Fast Scroll** 📜 | `Alt + PgUp/Dn` |
 
 <br>
 
@@ -177,47 +170,12 @@ wails build -ldflags "-s -w" -tags prod
 3. Paste your **API Key**.
 4. (Optional) Enable **Live API** for voice features.
 
-### 🍎 macOS Setup
-
-macOS requires specific permissions for full functionality:
-
-<details>
-<summary><b>🔐 Screen Recording (Required)</b></summary>
-
-For screen analysis:
-1. You should see a system prompt on first launch.
-2. If not, go to **System Settings** -> **Privacy & Security** -> **Screen Recording**.
-3. Toggle **Q-Solver** ON.
-4. **Restart** the app.
-
-</details>
-
-<details>
-<summary><b>🎙️ System Audio Capture (For Live API)</b></summary>
-
-To let the AI hear computer audio (e.g., meetings), you need a virtual audio driver:
-
-1. Install [BlackHole](https://github.com/ExistentialAudio/BlackHole):
-   ```bash
-   brew install blackhole-2ch
-   ```
-2. Open **Audio MIDI Setup**.
-3. Create a **Multi-Output Device**. Check both your **Speakers** and **BlackHole 2ch**.
-4. Set this Multi-Output Device as your system output.
-5. In Q-Solver Settings, ensure Audio Input includes BlackHole.
-
-<img src="assets/img5.png" width="90%" style="border-radius: 8px;"/>
-
-</details>
-
-<br>
-
 ## 🛠️ Tech Stack
 
 - **Core**: [Go](https://go.dev/) (Logic) + [Wails](https://wails.io/) (Binding)
 - **UI**: [Vue 3](https://vuejs.org/) + [Vue Flow](https://vueflow.dev/) (Mind Map)
 - **AI**: Gemini Protocol, OpenAI SDK
-- **Audio**: Miniaudio (via malgo), BlackHole
+- **Audio**: Windows WASAPI Loopback (via malgo)
 
 <br>
 
