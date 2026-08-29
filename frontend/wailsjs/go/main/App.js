@@ -22,6 +22,10 @@ export function ClearResume() {
   return window['go']['main']['App']['ClearResume']();
 }
 
+export function ClearScreenshots() {
+  return window['go']['main']['App']['ClearScreenshots']();
+}
+
 export function CopyCode() {
   return window['go']['main']['App']['CopyCode']();
 }
@@ -34,12 +38,12 @@ export function GetInitStatus() {
   return window['go']['main']['App']['GetInitStatus']();
 }
 
-export function GetRegisteredTools() {
-  return window['go']['main']['App']['GetRegisteredTools']();
-}
-
 export function GetModels(arg1, arg2) {
   return window['go']['main']['App']['GetModels'](arg1, arg2);
+}
+
+export function GetRegisteredTools() {
+  return window['go']['main']['App']['GetRegisteredTools']();
 }
 
 export function GetResumePDF() {
@@ -82,16 +86,12 @@ export function RemoveFocus() {
   return window['go']['main']['App']['RemoveFocus']();
 }
 
-export function RemoveScreenshot(arg1) {
-  return window['go']['main']['App']['RemoveScreenshot'](arg1);
-}
-
 export function RemoveLastScreenshot() {
   return window['go']['main']['App']['RemoveLastScreenshot']();
 }
 
-export function ClearScreenshots() {
-  return window['go']['main']['App']['ClearScreenshots']();
+export function RemoveScreenshot(arg1) {
+  return window['go']['main']['App']['RemoveScreenshot'](arg1);
 }
 
 export function RequestMicrophoneAccess() {
@@ -146,6 +146,10 @@ export function TestConnection(arg1, arg2, arg3) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3);
 }
 
+export function TestRealtimeConnection(arg1) {
+  return window['go']['main']['App']['TestRealtimeConnection'](arg1);
+}
+
 export function ToggleClickThrough() {
   return window['go']['main']['App']['ToggleClickThrough']();
 }
@@ -154,16 +158,16 @@ export function ToggleVisibility() {
   return window['go']['main']['App']['ToggleVisibility']();
 }
 
-export function TriggerSolve() {
-  return window['go']['main']['App']['TriggerSolve']();
-}
-
 export function TriggerScreenshot() {
   return window['go']['main']['App']['TriggerScreenshot']();
 }
 
 export function TriggerSend() {
   return window['go']['main']['App']['TriggerSend']();
+}
+
+export function TriggerSolve() {
+  return window['go']['main']['App']['TriggerSolve']();
 }
 
 export function UpdateSettings(arg1) {

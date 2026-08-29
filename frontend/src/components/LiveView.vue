@@ -3,7 +3,7 @@
     <!-- 顶部状态栏 -->
     <div class="live-header">
       <div class="header-left">
-        <div class="audio-bars" :class="{ active: status === 'connected' }">
+        <div class="audio-bars" :class="{ active: status === 'connected' && isSpeechActive }">
           <span></span><span></span><span></span>
         </div>
         <span class="title-text">实时助手</span>
@@ -182,6 +182,7 @@ const treeContainer = ref(null)
 const messages = ref([])
 const highlightMsgId = ref(null)
 const voiceReplyEnabled = ref(false)
+const isSpeechActive = ref(false)
 let pendingSpeech = ''
 
 // 问题导图数据
@@ -195,6 +196,7 @@ const sessionDuration = ref('00:00')
 // ===== 计算属性 =====
 const statusText = computed(() => {
   const map = { disconnected: '未连接', connecting: '连接中...', connected: '已连接', error: '连接失败' }
+  if (status.value === 'connected' && isSpeechActive.value) return '正在识别语音...'
   return map[status.value] || '未知'
 })
 
@@ -534,6 +536,39 @@ function onLiveTranscript(text) {
   scrollToBottom()
 }
 
+// Qwen transcription delta 的 text + stash 是完整预览，必须替换而不是追加。
+function onLiveTranscriptPreview(data) {
+  const itemId = data?.itemId || 'qwen-current'
+  const text = data?.text || ''
+  let msg = messages.value.find(message => message.type === 'interviewer' && message.itemId === itemId)
+  if (!msg) {
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg?.type === 'ai' && !lastMsg.isComplete) lastMsg.isComplete = true
+    msg = { id: generateId(), itemId, type: 'interviewer', content: text, timestamp: Date.now(), isComplete: false, isPreview: true }
+    messages.value.push(msg)
+  } else {
+    msg.content = text
+    msg.isPreview = true
+  }
+  scrollToBottom()
+}
+
+// completed.transcript 才是最终问题；按 item_id 精确替换并只保留一份。
+function onLiveTranscriptFinal(data) {
+  const itemId = data?.itemId || 'qwen-current'
+  const text = data?.text || ''
+  let msg = messages.value.find(message => message.type === 'interviewer' && message.itemId === itemId)
+  if (!msg) {
+    msg = { id: generateId(), itemId, type: 'interviewer', content: text, timestamp: Date.now(), isComplete: true }
+    messages.value.push(msg)
+  } else {
+    msg.content = text
+    msg.isPreview = false
+    msg.isComplete = true
+  }
+  scrollToBottom()
+}
+
 function onLiveAiText(text) {
   const lastMsg = messages.value[messages.value.length - 1]
   
@@ -578,11 +613,19 @@ function onLiveInterrupted() {
   }
 }
 
+function onSpeechStarted() {
+  isSpeechActive.value = true
+}
+
+function onSpeechStopped() {
+  isSpeechActive.value = false
+}
+
 function retryConnection() {
   errorMsg.value = ''
   status.value = 'connecting'
   StopLiveSession()
-  StartLiveSession()
+  StartLiveSession().catch(err => onLiveError(err?.message || String(err)))
 }
 
 // 计时器
@@ -611,9 +654,13 @@ onMounted(async () => {
   // Live API 事件
   EventsOn('live:status', onLiveStatus)
   EventsOn('live:transcript', onLiveTranscript)
+  EventsOn('live:transcript-preview', onLiveTranscriptPreview)
+  EventsOn('live:transcript-final', onLiveTranscriptFinal)
   EventsOn('live:ai-text', onLiveAiText)
   EventsOn('live:error', onLiveError)
   EventsOn('live:done', onLiveDone)
+  EventsOn('live:speech-started', onSpeechStarted)
+  EventsOn('live:speech-stopped', onSpeechStopped)
   EventsOn('live:Interrupted', onLiveInterrupted)
   
   // 导图节点操作事件（供后端调用）
@@ -622,7 +669,7 @@ onMounted(async () => {
   EventsOn('graph:remove-node', removeNodeFromBackend)
   EventsOn('graph:clear', clearNodesFromBackend)
   
-  StartLiveSession()
+  StartLiveSession().catch(err => onLiveError(err?.message || String(err)))
 })
 
 onUnmounted(() => {
@@ -633,9 +680,13 @@ onUnmounted(() => {
   // 移除 Live API 事件
   EventsOff('live:status')
   EventsOff('live:transcript')
+  EventsOff('live:transcript-preview')
+  EventsOff('live:transcript-final')
   EventsOff('live:ai-text')
   EventsOff('live:error')
   EventsOff('live:done')
+  EventsOff('live:speech-started')
+  EventsOff('live:speech-stopped')
   EventsOff('live:Interrupted')
   
   // 移除导图事件
@@ -1188,5 +1239,121 @@ watch(messages, scrollToBottom, { deep: true })
 }
 .key-points li::marker {
   color: #fbbf24;
+}
+
+/* ===== 白天主题 ===== */
+:global(html[data-theme="light"]) .live-header {
+  border-bottom-color: rgba(15, 23, 42, 0.1);
+}
+
+:global(html[data-theme="light"]) .audio-bars span,
+:global(html[data-theme="light"]) .status-dot {
+  background: rgba(15, 23, 42, 0.24);
+}
+
+:global(html[data-theme="light"]) .title-text,
+:global(html[data-theme="light"]) .empty-title {
+  color: #0f172a;
+}
+
+:global(html[data-theme="light"]) .header-status,
+:global(html[data-theme="light"]) .duration,
+:global(html[data-theme="light"]) .empty-state,
+:global(html[data-theme="light"]) .msg-role,
+:global(html[data-theme="light"]) .panel-title,
+:global(html[data-theme="light"]) .detail-path {
+  color: #64748b;
+}
+
+:global(html[data-theme="light"]) .error-banner {
+  color: #b91c1c;
+  background: rgba(254, 226, 226, 0.86);
+  border-color: rgba(220, 38, 38, 0.22);
+}
+
+:global(html[data-theme="light"]) .error-banner button {
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
+:global(html[data-theme="light"]) .chat-area::-webkit-scrollbar-thumb,
+:global(html[data-theme="light"]) .detail-panel::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.16);
+}
+
+:global(html[data-theme="light"]) .msg-item.interviewer .msg-content {
+  background: rgba(139, 92, 246, 0.09);
+}
+
+:global(html[data-theme="light"]) .msg-item.ai .msg-content {
+  background: rgba(5, 150, 105, 0.08);
+}
+
+:global(html[data-theme="light"]) .msg-text,
+:global(html[data-theme="light"]) .card-body,
+:global(html[data-theme="light"]) .key-points {
+  color: #1e293b;
+}
+
+:global(html[data-theme="light"]) .msg-text :deep(code),
+:global(html[data-theme="light"]) .card-body.markdown :deep(code) {
+  color: #0f172a;
+  background: rgba(15, 23, 42, 0.07);
+}
+
+:global(html[data-theme="light"]) .typing-indicator span {
+  background: rgba(15, 23, 42, 0.32);
+}
+
+:global(html[data-theme="light"]) .control-btn {
+  color: #64748b;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+:global(html[data-theme="light"]) .control-btn:hover {
+  color: #1e293b;
+  background: rgba(15, 23, 42, 0.1);
+}
+
+:global(html[data-theme="light"]) .tree-panel,
+:global(html[data-theme="light"]) .detail-panel {
+  background: rgba(255, 255, 255, 0.58);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+:global(html[data-theme="light"]) .tree-empty,
+:global(html[data-theme="light"]) .detail-empty {
+  color: rgba(71, 85, 105, 0.7);
+}
+
+:global(html[data-theme="light"]) .detail-path {
+  border-bottom-color: rgba(15, 23, 42, 0.1);
+}
+
+:global(html[data-theme="light"]) .detail-card {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+:global(html[data-theme="light"]) .card-body,
+:global(html[data-theme="light"]) .key-points {
+  border-top-color: rgba(15, 23, 42, 0.07);
+}
+
+:global(html[data-theme="light"]) .question-card .card-body {
+  background: rgba(139, 92, 246, 0.045);
+}
+
+:global(html[data-theme="light"]) .answer-card .card-body {
+  background: rgba(5, 150, 105, 0.045);
+}
+
+:global(html[data-theme="light"]) .answer-card .card-header {
+  color: #047857;
+}
+
+:global(html[data-theme="light"]) .key-points {
+  background: rgba(245, 158, 11, 0.06);
 }
 </style>

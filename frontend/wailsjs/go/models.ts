@@ -6,6 +6,7 @@ export namespace config {
 	    model?: string;
 	    baseURL?: string;
 	    prompt?: string;
+	    theme?: string;
 	    opacity?: number;
 	    noCompression?: boolean;
 	    compressionQuality?: number;
@@ -31,8 +32,24 @@ export namespace config {
 	    sttModel?: string;
 	    sttLanguage?: string;
 	    voiceReply?: boolean;
+	    realtimeEnabled: boolean;
+	    realtimeAPIKey?: string;
+	    realtimeWorkspaceID?: string;
+	    realtimeRegion?: string;
+	    realtimeBaseURL?: string;
+	    realtimeModel?: string;
+	    realtimePrompt?: string;
+	    realtimeTemperature: number;
+	    realtimeTopP: number;
+	    realtimeTopK: number;
+	    realtimeMaxTokens: number;
+	    realtimeVADType?: string;
+	    realtimeVADThreshold: number;
+	    realtimeSilenceDurationMs: number;
 	    windowWidth?: number;
 	    windowHeight?: number;
+	    aiFontSize?: number;
+	    codeWrap?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -45,6 +62,7 @@ export namespace config {
 	        this.model = source["model"];
 	        this.baseURL = source["baseURL"];
 	        this.prompt = source["prompt"];
+	        this.theme = source["theme"];
 	        this.opacity = source["opacity"];
 	        this.noCompression = source["noCompression"];
 	        this.compressionQuality = source["compressionQuality"];
@@ -70,8 +88,24 @@ export namespace config {
 	        this.sttModel = source["sttModel"];
 	        this.sttLanguage = source["sttLanguage"];
 	        this.voiceReply = source["voiceReply"];
+	        this.realtimeEnabled = source["realtimeEnabled"];
+	        this.realtimeAPIKey = source["realtimeAPIKey"];
+	        this.realtimeWorkspaceID = source["realtimeWorkspaceID"];
+	        this.realtimeRegion = source["realtimeRegion"];
+	        this.realtimeBaseURL = source["realtimeBaseURL"];
+	        this.realtimeModel = source["realtimeModel"];
+	        this.realtimePrompt = source["realtimePrompt"];
+	        this.realtimeTemperature = source["realtimeTemperature"];
+	        this.realtimeTopP = source["realtimeTopP"];
+	        this.realtimeTopK = source["realtimeTopK"];
+	        this.realtimeMaxTokens = source["realtimeMaxTokens"];
+	        this.realtimeVADType = source["realtimeVADType"];
+	        this.realtimeVADThreshold = source["realtimeVADThreshold"];
+	        this.realtimeSilenceDurationMs = source["realtimeSilenceDurationMs"];
 	        this.windowWidth = source["windowWidth"];
 	        this.windowHeight = source["windowHeight"];
+	        this.aiFontSize = source["aiFontSize"];
+	        this.codeWrap = source["codeWrap"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

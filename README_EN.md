@@ -10,8 +10,8 @@
   <p><i>🎯 Snapshot → Think → Solve. Your invisible AI Co-pilot.</i></p>
 
   <p>
-    <a href="https://github.com/jym66/Q-solver/stargazers"><img src="https://img.shields.io/github/stars/jym66/Q-solver?color=ffcb6b&style=for-the-badge&labelColor=30363d" alt="Stars"></a>
-    <a href="https://github.com/jym66/Q-solver/releases"><img src="https://img.shields.io/github/v/release/jym66/Q-solver?color=89d185&style=for-the-badge&labelColor=30363d" alt="Release"></a>
+    <a href="https://github.com/kd14125/Q-solver/stargazers"><img src="https://img.shields.io/github/stars/kd14125/Q-solver?color=ffcb6b&style=for-the-badge&labelColor=30363d" alt="Stars"></a>
+    <a href="https://github.com/kd14125/Q-solver/releases"><img src="https://img.shields.io/github/v/release/kd14125/Q-solver?color=89d185&style=for-the-badge&labelColor=30363d" alt="Release"></a>
     <img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go&logoColor=white&labelColor=30363d" alt="Go">
     <img src="https://img.shields.io/badge/Vue-3.x-4FC08D?style=for-the-badge&logo=vue.js&logoColor=white&labelColor=30363d" alt="Vue">
     <img src="https://img.shields.io/badge/Wails-v2-E30613?style=for-the-badge&logo=wails&logoColor=white&labelColor=30363d" alt="Wails">
@@ -126,7 +126,7 @@ Designed for privacy and multitasking, offering a "Ghost Window" experience.
 
 ### 📥 Option 1: Download App (Recommended)
 
-Get the latest installer for your OS from the [Releases Page](https://github.com/jym66/Q-solver/releases).
+Get the latest installer for your OS from the [Releases Page](https://github.com/kd14125/Q-solver/releases).
 
 > [!NOTE]
 > **macOS Notice**: If you see a "Damage" or "Unidentified Developer" warning, run:
@@ -144,7 +144,7 @@ Get the latest installer for your OS from the [Releases Page](https://github.com
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 # 2. Clone repo
-git clone https://github.com/jym66/Q-solver.git
+git clone https://github.com/kd14125/Q-solver.git
 cd Q-Solver
 
 # 3. Dev mode (Hot Reload)
@@ -224,11 +224,11 @@ To let the AI hear computer audio (e.g., meetings), you need a virtual audio dri
 ## 📈 Star History
 
 <div align="center">
-  <a href="https://star-history.com/#jym66/Q-solver&Date">
+  <a href="https://star-history.com/#kd14125/Q-solver&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=jym66/Q-solver&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=jym66/Q-solver&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=jym66/Q-solver&type=Date" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kd14125/Q-solver&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kd14125/Q-solver&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kd14125/Q-solver&type=Date" />
     </picture>
   </a>
 </div>

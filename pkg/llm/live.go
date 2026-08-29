@@ -11,22 +11,27 @@ import (
 type LiveMessageType string
 
 const (
-	LiveMsgTranscript      LiveMessageType = "transcript"       // 面试官语音转录
-	LiveMsgInterviewerDone LiveMessageType = "interviewer_done" // 面试官说话结束
-	LiveMsgAIText          LiveMessageType = "ai_text"          // AI 文本回复
-	LiveMsgToolCall        LiveMessageType = "tool_call"        // 工具调用请求
-	LiveMsgDone            LiveMessageType = "done"             // 对话轮完成
-	LiveMsgError           LiveMessageType = "error"            // 错误
-	LiveInterrupted        LiveMessageType = "interrupted"      // 打断
-	LiveMsgGoAway          LiveMessageType = "goaway"           // 服务器要求断开，需重连
+	LiveMsgTranscript        LiveMessageType = "transcript"         // 面试官语音转录
+	LiveMsgTranscriptPreview LiveMessageType = "transcript_preview" // 面试官语音转录预览（替换显示）
+	LiveMsgInterviewerDone   LiveMessageType = "interviewer_done"   // 面试官说话结束
+	LiveMsgSpeechStarted     LiveMessageType = "speech_started"     // 服务端 VAD 检测到开始说话
+	LiveMsgSpeechStopped     LiveMessageType = "speech_stopped"     // 服务端 VAD 检测到停止说话
+	LiveMsgAIText            LiveMessageType = "ai_text"            // AI 文本回复
+	LiveMsgToolCall          LiveMessageType = "tool_call"          // 工具调用请求
+	LiveMsgDone              LiveMessageType = "done"               // 对话轮完成
+	LiveMsgError             LiveMessageType = "error"              // 错误
+	LiveInterrupted          LiveMessageType = "interrupted"        // 打断
+	LiveMsgGoAway            LiveMessageType = "goaway"             // 服务器要求断开，需重连
 )
 
 // LiveMessage 实时消息
 type LiveMessage struct {
-	Type     LiveMessageType `json:"type"`
-	Text     string          `json:"text,omitempty"`
-	ToolName string          `json:"toolName,omitempty"` // 工具名称 (如 get_screenshot)
-	ToolID   string          `json:"toolId,omitempty"`   // 工具调用 ID
+	Type       LiveMessageType `json:"type"`
+	Text       string          `json:"text,omitempty"`
+	ToolName   string          `json:"toolName,omitempty"`   // 工具名称 (如 get_screenshot)
+	ToolID     string          `json:"toolId,omitempty"`     // 工具调用 ID
+	ItemID     string          `json:"itemId,omitempty"`     // 服务端会话项 ID
+	ResponseID string          `json:"responseId,omitempty"` // 服务端回答 ID
 }
 
 // LiveConfig 实时会话配置
@@ -40,6 +45,34 @@ type LiveConfig struct {
 	TopK        int
 	// 会话恢复令牌（用于 goaway 后重连）
 	ResumeToken string
+
+	// Qwen Realtime 专属连接与 VAD 配置。Gemini 实现忽略这些字段。
+	APIKey            string
+	WorkspaceID       string
+	Region            string
+	BaseURL           string
+	VADType           string
+	VADThreshold      float64
+	SilenceDurationMs int
+}
+
+// GetRealtimeLiveConfig 只从语音面试配置创建 LiveConfig，避免误用截图答题配置。
+func GetRealtimeLiveConfig(cfg config.Config) *LiveConfig {
+	return &LiveConfig{
+		Model:             cfg.RealtimeModel,
+		SystemInstruction: cfg.RealtimePrompt,
+		MaxTokens:         cfg.RealtimeMaxTokens,
+		Temperature:       cfg.RealtimeTemperature,
+		TopP:              cfg.RealtimeTopP,
+		TopK:              cfg.RealtimeTopK,
+		APIKey:            cfg.RealtimeAPIKey,
+		WorkspaceID:       cfg.RealtimeWorkspaceID,
+		Region:            cfg.RealtimeRegion,
+		BaseURL:           cfg.RealtimeBaseURL,
+		VADType:           cfg.RealtimeVADType,
+		VADThreshold:      cfg.RealtimeVADThreshold,
+		SilenceDurationMs: cfg.RealtimeSilenceDurationMs,
+	}
 }
 
 // LiveSession 实时会话接口

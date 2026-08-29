@@ -35,12 +35,25 @@ func NewService(cfg config.Config, cm *config.ConfigManager) *Service {
 
 	// 自注册配置变更回调
 	cm.Subscribe(func(NewConfig config.Config, oldConfig config.Config) {
-		s.config = NewConfig // 更新配置副本
-		s.UpdateProvider()
-		logger.Println("LLM Provider 已更新")
+		s.config = NewConfig
+		if screenshotProviderConfigChanged(NewConfig, oldConfig) {
+			s.UpdateProvider()
+			logger.Println("截图答题 LLM Provider 已更新")
+		}
 	})
 
 	return s
+}
+
+func screenshotProviderConfigChanged(newConfig, oldConfig config.Config) bool {
+	return newConfig.APIKey != oldConfig.APIKey ||
+		newConfig.BaseURL != oldConfig.BaseURL ||
+		newConfig.Model != oldConfig.Model ||
+		newConfig.Provider != oldConfig.Provider ||
+		newConfig.MaxTokens != oldConfig.MaxTokens ||
+		newConfig.Temperature != oldConfig.Temperature ||
+		newConfig.TopP != oldConfig.TopP ||
+		newConfig.TopK != oldConfig.TopK
 }
 
 // UpdateProvider 更新 Provider（配置变更时调用）

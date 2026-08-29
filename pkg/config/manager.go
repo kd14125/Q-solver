@@ -93,6 +93,8 @@ func (cm *ConfigManager) Load() error {
 	if cm.config.Prompt == "" {
 		cm.config.Prompt = DefaultPrompt
 	}
+	cm.migrateLegacyRealtimeDefaults()
+	cm.applyRealtimeDefaults()
 
 	logger.Println("配置已加载")
 	return nil
@@ -121,19 +123,47 @@ func (cm *ConfigManager) Get() Config {
 	return cm.config
 }
 
-// UpdateFromJSON 从前端 JSON 全量更新配置
+// UpdateFromJSON 增量更新配置。未出现在 JSON 中的字段保持不变，避免
+// 保存截图或语音任一设置组时覆盖另一组配置。
 func (cm *ConfigManager) UpdateFromJSON(jsonStr string) error {
-	var newConfig Config
-	if err := json.Unmarshal([]byte(jsonStr), &newConfig); err != nil {
+	var patch map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonStr), &patch); err != nil {
 		return fmt.Errorf("解析配置 JSON 失败: %w", err)
 	}
 
 	cm.mu.Lock()
-	cm.oldConfig = cm.config //保存当前配置为之前的配置
+	baseData, err := json.Marshal(cm.config)
+	if err != nil {
+		cm.mu.Unlock()
+		return fmt.Errorf("序列化当前配置失败: %w", err)
+	}
+	var merged map[string]json.RawMessage
+	if err := json.Unmarshal(baseData, &merged); err != nil {
+		cm.mu.Unlock()
+		return fmt.Errorf("解析当前配置失败: %w", err)
+	}
+	for key, value := range patch {
+		merged[key] = value
+	}
+	mergedData, err := json.Marshal(merged)
+	if err != nil {
+		cm.mu.Unlock()
+		return fmt.Errorf("合并配置失败: %w", err)
+	}
+	newConfig := NewDefaultConfig()
+	if err := json.Unmarshal(mergedData, &newConfig); err != nil {
+		cm.mu.Unlock()
+		return fmt.Errorf("解析合并配置失败: %w", err)
+	}
+	if err := newConfig.Validate(); err != nil {
+		cm.mu.Unlock()
+		return err
+	}
+	cm.oldConfig = cm.config
 	cm.config = newConfig
 	configCopy := cm.config
 	oldConfigCopy := cm.oldConfig
-	subscribers := cm.subscribers
+	subscribers := append([]func(NewConfig Config, oldConfig Config){}, cm.subscribers...)
 	cm.mu.Unlock()
 
 	// 通知订阅者
@@ -142,6 +172,49 @@ func (cm *ConfigManager) UpdateFromJSON(jsonStr string) error {
 	}
 
 	return cm.Save()
+}
+
+func (cm *ConfigManager) applyRealtimeDefaults() {
+	defaults := NewDefaultConfig()
+	if cm.config.RealtimeRegion == "" {
+		cm.config.RealtimeRegion = defaults.RealtimeRegion
+	}
+	if cm.config.RealtimeModel == "" {
+		cm.config.RealtimeModel = defaults.RealtimeModel
+	}
+	if cm.config.RealtimePrompt == "" {
+		cm.config.RealtimePrompt = defaults.RealtimePrompt
+	}
+	if cm.config.RealtimeTopP == 0 {
+		cm.config.RealtimeTopP = defaults.RealtimeTopP
+	}
+	if cm.config.RealtimeMaxTokens == 0 {
+		cm.config.RealtimeMaxTokens = defaults.RealtimeMaxTokens
+	}
+	if cm.config.RealtimeVADType == "" {
+		cm.config.RealtimeVADType = defaults.RealtimeVADType
+	}
+	if cm.config.RealtimeSilenceDurationMs == 0 {
+		cm.config.RealtimeSilenceDurationMs = defaults.RealtimeSilenceDurationMs
+	}
+}
+
+// migrateLegacyRealtimeDefaults 只迁移仍使用旧内置提示词和旧默认参数的配置。
+// 用户修改过的提示词或参数保持原值。
+func (cm *ConfigManager) migrateLegacyRealtimeDefaults() {
+	if cm.config.RealtimePrompt != legacyDefaultRealtimePrompt {
+		return
+	}
+	cm.config.RealtimePrompt = DefaultRealtimePrompt
+	if cm.config.RealtimeTemperature == 0.3 {
+		cm.config.RealtimeTemperature = 0.4
+	}
+	if cm.config.RealtimeTopK == 0 {
+		cm.config.RealtimeTopK = 20
+	}
+	if cm.config.RealtimeMaxTokens == 2000 {
+		cm.config.RealtimeMaxTokens = 600
+	}
 }
 
 func (cm *ConfigManager) Subscribe(callback func(NewConfig Config, oldConfig Config)) {

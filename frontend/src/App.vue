@@ -97,10 +97,11 @@
     :availableModels="uiState.availableModels" :isLoadingModels="uiState.isLoadingModels"
     :sttAvailableModels="uiState.sttAvailableModels" :isLoadingSTTModels="uiState.isLoadingSTTModels"
     :isTestingConnection="uiState.isTestingConnection" :connectionStatus="uiState.connectionStatus"
+    :isTestingRealtime="uiState.isTestingRealtime" :realtimeConnectionStatus="uiState.realtimeConnectionStatus"
     :renderedPrompt="renderedPrompt" :resumeRawContent="resumeState.rawContent" :isResumeParsing="resumeState.isParsing"
     :isMacOS="isMacOS"
     v-model:activeTab="uiState.activeTab"
-    @close="closeSettings" @save="saveSettings" @refresh-models="refreshModels" @refresh-stt-models="refreshSTTModels" @test-connection="testConnection"
+    @close="closeSettings" @save="saveSettings" @refresh-models="refreshModels" @refresh-stt-models="refreshSTTModels" @test-connection="testConnection" @test-realtime-connection="testRealtimeConnection"
     @record-key="recordKey" @select-resume="selectResume" @clear-resume="clearResume" @parse-resume="parseResume"
     @update:resumeRawContent="val => resumeState.rawContent = val" />
 
@@ -166,6 +167,8 @@ const uiState = reactive({
   promptTab: 'edit',
   isTestingConnection: false,
   connectionStatus: null,
+  isTestingRealtime: false,
+  realtimeConnectionStatus: null,
 })
 
 const {
@@ -182,7 +185,7 @@ const settingsCallbacks = {}
 
 const {
   settings, tempSettings, renderedPrompt, maskedKey,
-  loadSettings, refreshModels, refreshSTTModels, testConnection, fetchModels, saveSettings, resetTempSettings, openSettings: initSettings
+  loadSettings, refreshModels, refreshSTTModels, testConnection, testRealtimeConnection, fetchModels, saveSettings, resetTempSettings, openSettings: initSettings
 } = useSettings(shortcuts, tempShortcuts, uiState, settingsCallbacks)
 
 watch(() => settings.aiFontSize, (size) => {

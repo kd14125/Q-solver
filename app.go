@@ -17,8 +17,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -142,24 +144,66 @@ func (a *App) onConfigChanged(NewConfig config.Config, oldConfig config.Config) 
 		a.solver.ClearHistory()
 	}
 
-	if NewConfig.UseLiveApi != oldConfig.UseLiveApi {
-		if NewConfig.UseLiveApi == true && a.liveManager.IsActive() {
-			logger.Println("配置变更，重连 Live Session...")
+	if a.liveManager != nil && a.liveManager.IsActive() {
+		if !NewConfig.UseLiveApi {
+			a.StopLiveSession()
+		} else if voiceSessionConfigChanged(NewConfig, oldConfig) {
+			logger.Println("语音配置变更，重连语音会话...")
 			a.StopLiveSession()
 			if err := a.StartLiveSession(); err != nil {
-				logger.Printf("Live Session 重连失败: %v", err)
+				logger.Printf("语音会话重连失败: %v", err)
+				a.EmitEvent("live:error", err.Error())
 			}
-		}
-		if NewConfig.UseLiveApi == false && a.liveManager.IsActive() {
-			a.StopLiveSession()
 		}
 	}
 
 	logger.Println("配置已更新并应用")
 }
 
+func voiceSessionConfigChanged(newConfig, oldConfig config.Config) bool {
+	if newConfig.UseLiveApi != oldConfig.UseLiveApi ||
+		newConfig.RealtimeEnabled != oldConfig.RealtimeEnabled ||
+		newConfig.STTEnabled != oldConfig.STTEnabled {
+		return true
+	}
+	if newConfig.RealtimeEnabled {
+		return newConfig.RealtimeAPIKey != oldConfig.RealtimeAPIKey ||
+			newConfig.RealtimeWorkspaceID != oldConfig.RealtimeWorkspaceID ||
+			newConfig.RealtimeRegion != oldConfig.RealtimeRegion ||
+			newConfig.RealtimeBaseURL != oldConfig.RealtimeBaseURL ||
+			newConfig.RealtimeModel != oldConfig.RealtimeModel ||
+			newConfig.RealtimePrompt != oldConfig.RealtimePrompt ||
+			newConfig.RealtimeTemperature != oldConfig.RealtimeTemperature ||
+			newConfig.RealtimeTopP != oldConfig.RealtimeTopP ||
+			newConfig.RealtimeTopK != oldConfig.RealtimeTopK ||
+			newConfig.RealtimeMaxTokens != oldConfig.RealtimeMaxTokens ||
+			newConfig.RealtimeVADType != oldConfig.RealtimeVADType ||
+			newConfig.RealtimeVADThreshold != oldConfig.RealtimeVADThreshold ||
+			newConfig.RealtimeSilenceDurationMs != oldConfig.RealtimeSilenceDurationMs
+	}
+	if newConfig.STTEnabled {
+		return newConfig.STTAPIKey != oldConfig.STTAPIKey ||
+			newConfig.STTBaseURL != oldConfig.STTBaseURL ||
+			newConfig.STTModel != oldConfig.STTModel ||
+			newConfig.STTLanguage != oldConfig.STTLanguage
+	}
+	// 原 Gemini Live 仍由截图模型配置驱动。
+	return newConfig.APIKey != oldConfig.APIKey ||
+		newConfig.BaseURL != oldConfig.BaseURL ||
+		newConfig.Model != oldConfig.Model ||
+		newConfig.Provider != oldConfig.Provider ||
+		newConfig.Prompt != oldConfig.Prompt ||
+		newConfig.MaxTokens != oldConfig.MaxTokens ||
+		newConfig.Temperature != oldConfig.Temperature ||
+		newConfig.TopP != oldConfig.TopP ||
+		newConfig.TopK != oldConfig.TopK
+}
+
 // OnShutdown Wails 关闭回调
 func (a *App) OnShutdown(ctx context.Context) {
+	if a.liveManager != nil && a.liveManager.IsActive() {
+		a.liveManager.Stop()
+	}
 	if a.shortcutService != nil {
 		a.shortcutService.Stop()
 	}
@@ -522,6 +566,35 @@ func (a *App) TestConnection(apiKey, baseURL, model string) string {
 	return a.llmService.TestConnection(ctx, apiKey, baseURL, model)
 }
 
+// TestRealtimeConnection 使用尚未保存的语音配置测试完整 WebSocket + session.update 流程。
+func (a *App) TestRealtimeConnection(configJSON string) string {
+	tempConfig := a.configManager.Get()
+	if err := json.Unmarshal([]byte(configJSON), &tempConfig); err != nil {
+		return "解析语音配置失败: " + err.Error()
+	}
+	if err := tempConfig.Validate(); err != nil {
+		return err.Error()
+	}
+	if tempConfig.RealtimeAPIKey == "" {
+		return "Realtime API Key 不能为空"
+	}
+	if tempConfig.RealtimeBaseURL == "" && tempConfig.RealtimeWorkspaceID == "" {
+		return "Realtime Workspace ID 不能为空"
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	session, err := llm.NewQwenRealtimeProvider().ConnectLive(timeoutCtx, llm.GetRealtimeLiveConfig(tempConfig))
+	if err != nil {
+		return err.Error()
+	}
+	_ = session.Close()
+	return ""
+}
+
 // GetModels 获取模型列表
 func (a *App) GetModels(apiKey string, baseURL string) ([]string, error) {
 	ctx := a.ctx
@@ -587,7 +660,14 @@ func (a *App) SaveImageToFile(base64Data string) (bool, error) {
 // StartLiveSession 启动 Live API 会话
 func (a *App) StartLiveSession() error {
 	cfg := a.configManager.Get()
-	if cfg.APIKey == "" {
+	if cfg.RealtimeEnabled {
+		if cfg.RealtimeAPIKey == "" {
+			return fmt.Errorf("请先配置 Realtime API Key")
+		}
+		if cfg.RealtimeBaseURL == "" && cfg.RealtimeWorkspaceID == "" {
+			return fmt.Errorf("请先配置 Realtime Workspace ID")
+		}
+	} else if !cfg.STTEnabled && cfg.APIKey == "" {
 		a.EmitEvent("require-login")
 		return nil
 	}

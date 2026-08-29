@@ -1,0 +1,170 @@
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestPartialUpdatesKeepScreenshotAndRealtimeSettingsIsolated(t *testing.T) {
+	cm := NewConfigManager()
+	cm.configPath = filepath.Join(t.TempDir(), "config.json")
+	cm.config.RealtimeAPIKey = "voice-secret"
+	cm.config.RealtimeWorkspaceID = "workspace-1"
+	cm.config.APIKey = "screenshot-secret"
+	cm.config.Model = "screenshot-model"
+
+	if err := cm.UpdateFromJSON(`{"model":"new-screenshot-model"}`); err != nil {
+		t.Fatal(err)
+	}
+	got := cm.Get()
+	if got.RealtimeAPIKey != "voice-secret" || got.RealtimeWorkspaceID != "workspace-1" {
+		t.Fatalf("screenshot update overwrote realtime settings: %+v", got)
+	}
+
+	if err := cm.UpdateFromJSON(`{"realtimeModel":"new-voice-model","realtimePrompt":"voice prompt"}`); err != nil {
+		t.Fatal(err)
+	}
+	got = cm.Get()
+	if got.APIKey != "screenshot-secret" || got.Model != "new-screenshot-model" {
+		t.Fatalf("realtime update overwrote screenshot settings: %+v", got)
+	}
+}
+
+func TestOldConfigLoadsWithRealtimeDefaults(t *testing.T) {
+	cm := NewConfigManager()
+	dir := t.TempDir()
+	cm.configPath = filepath.Join(dir, "config.json")
+	if err := os.WriteFile(cm.configPath, []byte(`{"apiKey":"old-key","model":"old-model","prompt":"old-prompt"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cm.Load(); err != nil {
+		t.Fatal(err)
+	}
+	got := cm.Get()
+	if got.APIKey != "old-key" || got.Model != "old-model" || got.Prompt != "old-prompt" {
+		t.Fatalf("old screenshot config changed: %+v", got)
+	}
+	if got.RealtimeModel != "qwen3.5-omni-plus-realtime" || got.RealtimePrompt == "" {
+		t.Fatalf("realtime defaults missing: %+v", got)
+	}
+	if got.Theme != "dark" {
+		t.Fatalf("旧配置没有使用夜间主题默认值: theme=%q", got.Theme)
+	}
+}
+
+func TestThemePersistsWithoutOverwritingOtherSettings(t *testing.T) {
+	cm := NewConfigManager()
+	cm.configPath = filepath.Join(t.TempDir(), "config.json")
+	cm.config.APIKey = "screenshot-secret"
+	cm.config.RealtimeWorkspaceID = "workspace-1"
+
+	if err := cm.UpdateFromJSON(`{"theme":"light"}`); err != nil {
+		t.Fatal(err)
+	}
+	got := cm.Get()
+	if got.Theme != "light" {
+		t.Fatalf("白天主题没有保存: theme=%q", got.Theme)
+	}
+	if got.APIKey != "screenshot-secret" || got.RealtimeWorkspaceID != "workspace-1" {
+		t.Fatalf("保存主题覆盖了其他配置: %+v", got)
+	}
+
+	reloaded := NewConfigManager()
+	reloaded.configPath = cm.configPath
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Get().Theme != "light" {
+		t.Fatalf("重新加载后主题丢失: theme=%q", reloaded.Get().Theme)
+	}
+}
+
+func TestInvalidThemeIsRejected(t *testing.T) {
+	cm := NewConfigManager()
+	cm.configPath = filepath.Join(t.TempDir(), "config.json")
+	if err := cm.UpdateFromJSON(`{"theme":"blue"}`); err == nil {
+		t.Fatal("expected invalid theme validation error")
+	}
+}
+
+func TestRealtimeAndSTTCannotBothBeEnabled(t *testing.T) {
+	cm := NewConfigManager()
+	cm.configPath = filepath.Join(t.TempDir(), "config.json")
+	if err := cm.UpdateFromJSON(`{"realtimeEnabled":true,"sttEnabled":true}`); err == nil {
+		t.Fatal("expected mutually exclusive realtime/STT validation error")
+	}
+}
+
+func TestRealtimeZeroValuesSurviveUnrelatedPartialUpdate(t *testing.T) {
+	cm := NewConfigManager()
+	cm.configPath = filepath.Join(t.TempDir(), "config.json")
+	cm.config.RealtimeTemperature = 0
+	cm.config.RealtimeVADThreshold = 0
+
+	if err := cm.UpdateFromJSON(`{"model":"unchanged-voice-config"}`); err != nil {
+		t.Fatal(err)
+	}
+	got := cm.Get()
+	if got.RealtimeTemperature != 0 || got.RealtimeVADThreshold != 0 {
+		t.Fatalf("合法的语音零值被覆盖: temperature=%v threshold=%v", got.RealtimeTemperature, got.RealtimeVADThreshold)
+	}
+}
+
+func TestLegacyRealtimeDefaultsMigrateToConciseOralDefaults(t *testing.T) {
+	cm := NewConfigManager()
+	cm.configPath = filepath.Join(t.TempDir(), "config.json")
+	legacy := NewDefaultConfig()
+	legacy.RealtimePrompt = legacyDefaultRealtimePrompt
+	legacy.RealtimeTemperature = 0.3
+	legacy.RealtimeTopK = 0
+	legacy.RealtimeMaxTokens = 2000
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cm.configPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cm.Load(); err != nil {
+		t.Fatal(err)
+	}
+	got := cm.Get()
+	if got.RealtimePrompt != DefaultRealtimePrompt {
+		t.Fatal("旧内置语音提示词没有迁移到口语化短回答版本")
+	}
+	if got.RealtimeTemperature != 0.4 || got.RealtimeTopP != 0.8 || got.RealtimeTopK != 20 || got.RealtimeMaxTokens != 600 {
+		t.Fatalf("旧语音参数没有迁移到推荐值: temperature=%v topP=%v topK=%v maxTokens=%v", got.RealtimeTemperature, got.RealtimeTopP, got.RealtimeTopK, got.RealtimeMaxTokens)
+	}
+	for _, phrase := range []string{"直接说出口", "30 到 60 秒", "不要使用 Markdown 标题"} {
+		if !strings.Contains(got.RealtimePrompt, phrase) {
+			t.Fatalf("新提示词缺少长度或口语约束 %q", phrase)
+		}
+	}
+}
+
+func TestCustomRealtimePromptAndParametersAreNotMigrated(t *testing.T) {
+	cm := NewConfigManager()
+	cm.configPath = filepath.Join(t.TempDir(), "config.json")
+	custom := NewDefaultConfig()
+	custom.RealtimePrompt = "我的自定义面试提示词"
+	custom.RealtimeTemperature = 0.7
+	custom.RealtimeTopK = 7
+	custom.RealtimeMaxTokens = 900
+	data, err := json.Marshal(custom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cm.configPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cm.Load(); err != nil {
+		t.Fatal(err)
+	}
+	got := cm.Get()
+	if got.RealtimePrompt != custom.RealtimePrompt || got.RealtimeTemperature != 0.7 || got.RealtimeTopK != 7 || got.RealtimeMaxTokens != 900 {
+		t.Fatalf("用户自定义语音配置被覆盖: %+v", got)
+	}
+}

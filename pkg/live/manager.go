@@ -17,9 +17,9 @@ import (
 
 // 重连相关常量
 const (
-	maxReconnectAttempts = 3               // 最大重连尝试次数
-	reconnectDelay       = time.Second     // 重连间隔
-	connectTimeout       = 3 * time.Second // 连接超时时间
+	maxReconnectAttempts = 3                // 最大重连尝试次数
+	reconnectDelay       = time.Second      // 重连间隔
+	connectTimeout       = 10 * time.Second // 连接超时时间
 )
 
 // SessionState 会话状态类型
@@ -91,22 +91,24 @@ func (m *LiveSessionManager) Start() error {
 	defer m.mu.Unlock()
 
 	cfg := m.configManager.Get()
+	if cfg.RealtimeEnabled && cfg.STTEnabled {
+		return &liveError{"Qwen Realtime 与第三方 STT 不能同时启用"}
+	}
 	if cfg.STTEnabled {
 		return m.startSTTMode(cfg)
 	}
 
-	// 检查 Provider 是否支持 Live
-	provider := m.llmService.GetProvider()
-	liveProvider, ok := provider.(llm.LiveProvider)
-	if !ok {
-		return &liveError{"当前模型不支持 Live API"}
+	liveProvider, liveCfg, err := m.createLiveProvider(cfg)
+	if err != nil {
+		return err
 	}
 
 	m.emitEvent("live:status", "connecting")
 
 	// 连接 Live Session
-	liveCfg := llm.GetLiveConfig(cfg)
-	session, err := liveProvider.ConnectLive(m.ctx, liveCfg)
+	connectCtx, cancelConnect := context.WithTimeout(m.ctx, connectTimeout)
+	defer cancelConnect()
+	session, err := liveProvider.ConnectLive(connectCtx, liveCfg)
 	if err != nil {
 		logger.Println("[Start] liveApi连接服务器失败", err)
 		m.emitEvent("live:status", "error")
@@ -162,6 +164,26 @@ func (m *LiveSessionManager) Start() error {
 	return nil
 }
 
+// createLiveProvider 将语音 Provider 与截图模型 Provider 明确隔离。
+func (m *LiveSessionManager) createLiveProvider(cfg config.Config) (llm.LiveProvider, *llm.LiveConfig, error) {
+	if cfg.RealtimeEnabled {
+		if strings.TrimSpace(cfg.RealtimeAPIKey) == "" {
+			return nil, nil, &liveError{"请先配置 Realtime API Key"}
+		}
+		if strings.TrimSpace(cfg.RealtimeBaseURL) == "" && strings.TrimSpace(cfg.RealtimeWorkspaceID) == "" {
+			return nil, nil, &liveError{"请先配置 Realtime Workspace ID"}
+		}
+		return llm.NewQwenRealtimeProvider(), llm.GetRealtimeLiveConfig(cfg), nil
+	}
+
+	provider := m.llmService.GetProvider()
+	liveProvider, ok := provider.(llm.LiveProvider)
+	if !ok {
+		return nil, nil, &liveError{"当前截图模型不支持 Gemini Live API"}
+	}
+	return liveProvider, llm.GetLiveConfig(cfg), nil
+}
+
 // Stop 停止 Live API 会话（外部调用）
 func (m *LiveSessionManager) Stop() {
 	// 设置停止状态
@@ -174,7 +196,8 @@ func (m *LiveSessionManager) Stop() {
 	}
 	m.mu.Unlock()
 
-	// 等待协程结束
+	// 先关闭音频和 WebSocket，解除发送/接收协程的阻塞，再等待退出。
+	m.cleanup()
 	m.wg.Wait()
 
 	// 停止问题导图处理器
@@ -189,8 +212,6 @@ func (m *LiveSessionManager) Stop() {
 	m.currentAnswer.Reset()
 	m.roundMu.Unlock()
 
-	// 执行清理
-	m.cleanup()
 	m.sttActive.Store(false)
 
 	m.emitEvent("live:status", "disconnected")
@@ -494,11 +515,25 @@ func (m *LiveSessionManager) receiveLoop() {
 			m.roundMu.Unlock()
 
 		case llm.LiveMsgTranscript:
-			m.emitEvent("live:transcript", msg.Text)
-			// 累积问题文本
+			if msg.ItemID != "" {
+				m.emitEvent("live:transcript-final", map[string]string{"itemId": msg.ItemID, "text": msg.Text})
+			} else {
+				m.emitEvent("live:transcript", msg.Text)
+			}
+			// 最终转录只保存一次；Qwen Session 已按 item_id 去重。
 			m.roundMu.Lock()
 			m.currentQuestion.WriteString(msg.Text)
 			m.roundMu.Unlock()
+
+		case llm.LiveMsgTranscriptPreview:
+			m.emitEvent("live:transcript-preview", map[string]string{"itemId": msg.ItemID, "text": msg.Text})
+
+		case llm.LiveMsgSpeechStarted:
+			m.emitEvent("live:speech-started", map[string]string{"itemId": msg.ItemID})
+
+		case llm.LiveMsgSpeechStopped:
+			m.emitEvent("live:speech-stopped", map[string]string{"itemId": msg.ItemID})
+			m.emitEvent("live:interviewer-done")
 
 		case llm.LiveMsgInterviewerDone:
 			logger.Println("[receiveLoop] Live: 面试官说话结束")
@@ -572,14 +607,6 @@ func (m *LiveSessionManager) handleGoAway(oldSession llm.LiveSession) {
 	// 关闭旧会话
 	oldSession.Close()
 
-	// 获取 provider
-	provider := m.llmService.GetProvider()
-	liveProvider, ok := provider.(llm.LiveProvider)
-	if !ok {
-		m.errorChan <- &liveError{"Provider 不支持 Live API"}
-		return
-	}
-
 	// 重连尝试
 	var newSession llm.LiveSession
 	var err error
@@ -596,10 +623,16 @@ func (m *LiveSessionManager) handleGoAway(oldSession llm.LiveSession) {
 		logger.Printf("[handleGoAway] Live: 重连尝试 %d/%d", attempt, maxReconnectAttempts)
 
 		cfg := m.configManager.Get()
-		liveCfg := llm.GetLiveConfig(cfg)
+		liveProvider, liveCfg, providerErr := m.createLiveProvider(cfg)
+		if providerErr != nil {
+			err = providerErr
+			break
+		}
 		liveCfg.ResumeToken = resumeToken // 使用恢复令牌
 
-		newSession, err = liveProvider.ConnectLive(m.ctx, liveCfg)
+		connectCtx, cancelConnect := context.WithTimeout(m.cancelCtx, connectTimeout)
+		newSession, err = liveProvider.ConnectLive(connectCtx, liveCfg)
+		cancelConnect()
 		if err == nil {
 			break
 		}

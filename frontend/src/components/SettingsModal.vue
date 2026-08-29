@@ -9,14 +9,15 @@
         <div class="tabs">
           <div class="tab" :class="{ active: currentTab === 'general' }" @click="currentTab = 'general'">
             常规设置</div>
-          <div class="tab" :class="{ active: currentTab === 'model' }" @click="currentTab = 'model'">模型设置
+          <div class="tab" :class="{ active: currentTab === 'model' }" @click="currentTab = 'model'">截图答题模型
           </div>
-          <div class="tab" :class="{ active: currentTab === 'params' }" @click="currentTab = 'params'">生成参数</div>
+          <div class="tab" :class="{ active: currentTab === 'realtime' }" @click="currentTab = 'realtime'">语音面试模型</div>
+          <div class="tab" :class="{ active: currentTab === 'params' }" @click="currentTab = 'params'">截图生成参数</div>
           <div class="tab" :class="{ active: currentTab === 'screenshot' }" @click="currentTab = 'screenshot'">截图设置</div>
           <div class="tab" :class="{ active: currentTab === 'resume' }" @click="currentTab = 'resume'">
             简历设置</div>
           <div class="tab" :class="{ active: currentTab === 'account' }" @click="currentTab = 'account'">
-            提供商</div>
+            截图提供商</div>
         </div>
         <span class="close-btn" @click="$emit('close')">&times;</span>
       </div>
@@ -101,6 +102,63 @@
             v-model:thinkingBudget="tempSettings.thinkingBudget" />
         </div>
 
+        <div v-show="currentTab === 'realtime'">
+          <div class="form-group">
+            <div class="setting-row">
+              <div class="setting-info"><span class="setting-title">启用语音面试模式</span><span class="setting-desc">采集系统声音并实时显示面试问题和文字答案</span></div>
+              <label class="switch"><input type="checkbox" v-model="tempSettings.useLiveApi"><span class="slider round"></span></label>
+            </div>
+          </div>
+
+          <div class="form-group context-setting">
+            <div class="setting-row">
+              <div class="setting-info"><span class="setting-title">Qwen3.5 Omni Realtime</span><span class="setting-desc">semantic VAD 自动判断问题结束，仅输出文字</span></div>
+              <label class="switch"><input type="checkbox" v-model="tempSettings.realtimeEnabled" @change="onRealtimeToggle"><span class="slider round"></span></label>
+            </div>
+          </div>
+
+          <template v-if="tempSettings.realtimeEnabled">
+            <div class="form-group"><label>Realtime API Key</label><input class="form-input" type="password" v-model="tempSettings.realtimeAPIKey" autocomplete="off" /></div>
+            <div class="form-group"><label>Workspace ID</label><input class="form-input" v-model.trim="tempSettings.realtimeWorkspaceID" placeholder="阿里云 Model Studio Workspace ID" /></div>
+            <div class="form-group"><label>地域</label><input class="form-input" v-model.trim="tempSettings.realtimeRegion" placeholder="cn-beijing" /></div>
+            <div class="form-group"><label>Realtime Base URL（可选）</label><input class="form-input" v-model.trim="tempSettings.realtimeBaseURL" placeholder="留空时根据 Workspace ID 和地域自动生成" /></div>
+            <div class="form-group"><label>模型</label><input class="form-input" v-model.trim="tempSettings.realtimeModel" placeholder="qwen3.5-omni-plus-realtime" /></div>
+            <div class="form-group"><label>语音面试系统提示词</label><textarea class="prompt-textarea" rows="10" v-model="tempSettings.realtimePrompt"></textarea><p class="hint-text">默认生成候选人可直接说出口的短回答：普通问题约 30–60 秒，复杂技术题通常不超过 90 秒。</p></div>
+            <div class="form-group realtime-grid">
+              <label>Temperature<input class="form-input" type="number" min="0" max="1.99" step="0.1" v-model.number="tempSettings.realtimeTemperature" /></label>
+              <label>Top P<input class="form-input" type="number" min="0.01" max="1" step="0.05" v-model.number="tempSettings.realtimeTopP" /></label>
+              <label>Top K<input class="form-input" type="number" min="0" step="1" v-model.number="tempSettings.realtimeTopK" /></label>
+              <label>Max Tokens<input class="form-input" type="number" min="1" step="100" v-model.number="tempSettings.realtimeMaxTokens" /></label>
+            </div>
+            <p class="hint-text">推荐值：Temperature 0.4、Top P 0.8、Top K 20、Max Tokens 600，兼顾自然口语、稳定性和回答长度。</p>
+            <div class="form-group"><label>VAD 类型</label><select class="form-input" v-model="tempSettings.realtimeVADType"><option value="semantic_vad">semantic_vad</option><option value="server_vad">server_vad</option></select></div>
+            <div class="form-group realtime-grid">
+              <label>VAD 阈值<input class="form-input" type="number" min="-1" max="1" step="0.1" v-model.number="tempSettings.realtimeVADThreshold" /></label>
+              <label>静音判定（ms）<input class="form-input" type="number" min="200" max="6000" step="100" v-model.number="tempSettings.realtimeSilenceDurationMs" /></label>
+            </div>
+            <button class="btn-primary" type="button" @click="$emit('test-realtime-connection')" :disabled="isTestingRealtime || !tempSettings.realtimeAPIKey || (!tempSettings.realtimeWorkspaceID && !tempSettings.realtimeBaseURL)">{{ isTestingRealtime ? '连接中…' : '测试语音 API 连接' }}</button>
+            <div v-if="realtimeConnectionStatus" class="connection-status" :class="realtimeConnectionStatus.type"><span class="status-icon">{{ realtimeConnectionStatus.icon }}</span><span class="status-text">{{ realtimeConnectionStatus.message }}</span></div>
+          </template>
+
+          <div class="form-group context-setting" style="margin-top: 18px;">
+            <div class="setting-row">
+              <div class="setting-info"><span class="setting-title">兼容第三方 STT（每 5 秒）</span><span class="setting-desc">上传固定音频段，再使用截图答题文本模型回答；不能与 Qwen Realtime 同时启用</span></div>
+              <label class="switch"><input type="checkbox" v-model="tempSettings.sttEnabled" @change="onSTTToggle"><span class="slider round"></span></label>
+            </div>
+          </div>
+          <template v-if="tempSettings.sttEnabled">
+            <div class="form-group"><label>语音转文字 API 地址</label><input class="form-input" v-model.trim="tempSettings.sttBaseURL" placeholder="例如 https://api.openai.com/v1" /></div>
+            <div class="form-group"><label>语音转文字 API Key</label><input class="form-input" type="password" v-model="tempSettings.sttAPIKey" autocomplete="off" /></div>
+            <div class="form-group">
+              <div class="model-header"><label>语音识别模型</label><button class="btn-icon" @click="$emit('refresh-stt-models')" :disabled="isLoadingSTTModels || !tempSettings.sttAPIKey || !tempSettings.sttBaseURL" title="刷新语音识别模型列表">↻</button></div>
+              <ModelSelect v-if="sttAvailableModels.length" v-model="tempSettings.sttModel" :models="sttAvailableModels" :loading="isLoadingSTTModels" placeholder="选择语音识别模型" />
+              <input class="form-input" v-model.trim="tempSettings.sttModel" placeholder="whisper-1" />
+            </div>
+            <div class="form-group"><label>识别语言</label><input class="form-input" v-model.trim="tempSettings.sttLanguage" placeholder="zh" /></div>
+            <div class="setting-row"><div class="setting-info"><span class="setting-title">朗读回答</span><span class="setting-desc">仅兼容 STT 模式使用系统语音朗读</span></div><label class="switch"><input type="checkbox" v-model="tempSettings.voiceReply"><span class="slider round"></span></label></div>
+          </template>
+        </div>
+
         <div v-show="currentTab === 'general'">
           <div class="form-group">
             <div class="context-setting">
@@ -115,65 +173,6 @@
                 </label>
               </div>
 
-              <div class="setting-row" style="margin-top: 12px;">
-                <div class="setting-info">
-                  <span class="setting-title">启用 Live API 模式</span>
-                  <span class="setting-desc">采集扬声器声音，实时识别面试官问题并回答</span>
-                </div>
-                <label class="switch">
-                  <input type="checkbox" v-model="tempSettings.useLiveApi">
-                  <span class="slider round"></span>
-                </label>
-              </div>
-
-			  <div class="setting-row" style="margin-top: 12px;">
-				<div class="setting-info">
-				  <span class="setting-title">使用第三方语音转文字</span>
-				  <span class="setting-desc">每 5 秒上传一次系统声音，再复用当前文本模型回答</span>
-				</div>
-				<label class="switch">
-				  <input type="checkbox" v-model="tempSettings.sttEnabled">
-				  <span class="slider round"></span>
-				</label>
-			  </div>
-			  <template v-if="tempSettings.sttEnabled">
-				<div class="form-group" style="margin-top: 12px;">
-				  <label>语音转文字 API 地址</label>
-				  <input class="form-input" v-model.trim="tempSettings.sttBaseURL" placeholder="例如 https://api.openai.com/v1" />
-				  <p class="hint-text">兼容 OpenAI /audio/transcriptions，也可直接填写完整接口地址</p>
-				</div>
-				<div class="form-group">
-				  <label>语音转文字 API Key</label>
-				  <input class="form-input" type="password" v-model="tempSettings.sttAPIKey" autocomplete="off" />
-				</div>
-				<div class="form-group">
-				  <div class="model-header">
-					<label>语音识别模型</label>
-					<button class="btn-icon" @click="$emit('refresh-stt-models')"
-					  :disabled="isLoadingSTTModels || !tempSettings.sttAPIKey || !tempSettings.sttBaseURL"
-					  title="刷新语音识别模型列表">
-					  <svg class="action-icon" :class="{ spin: isLoadingSTTModels }" viewBox="0 0 16 16" fill="none">
-						<path d="M14 8a6 6 0 01-10.24 4.24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-						<path d="M2 8a6 6 0 0110.24-4.24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-						<path d="M14 3v5h-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						<path d="M2 13V8h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-					  </svg>
-					</button>
-				  </div>
-				  <ModelSelect v-if="sttAvailableModels.length" v-model="tempSettings.sttModel"
-					:models="sttAvailableModels" :loading="isLoadingSTTModels" placeholder="选择语音识别模型" />
-				  <input class="form-input" v-model.trim="tempSettings.sttModel" placeholder="whisper-1" />
-				  <p class="hint-text">支持从接口获取模型列表，也可手动填写中转站模型 ID</p>
-				</div>
-				<div class="form-group">
-				  <label>识别语言</label>
-				  <input class="form-input" v-model.trim="tempSettings.sttLanguage" placeholder="zh" />
-				</div>
-				<div class="setting-row">
-				  <div class="setting-info"><span class="setting-title">朗读回答</span><span class="setting-desc">使用 Windows/WebView 系统语音朗读 AI 回答</span></div>
-				  <label class="switch"><input type="checkbox" v-model="tempSettings.voiceReply"><span class="slider round"></span></label>
-				</div>
-			  </template>
             </div>
           </div>
 
@@ -190,6 +189,33 @@
                 </button>
               </div>
             </div>
+          </div>
+
+          <div class="form-group">
+            <label>界面主题</label>
+            <div class="theme-options" role="radiogroup" aria-label="界面主题">
+              <button type="button" class="theme-option" :class="{ active: tempSettings.theme === 'dark' }"
+                role="radio" :aria-checked="tempSettings.theme === 'dark'" @click="tempSettings.theme = 'dark'">
+                <span class="theme-preview dark-preview" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </span>
+                <span class="theme-option-copy">
+                  <strong>🌙 夜间模式</strong>
+                  <small>深色低亮度，适合夜间使用</small>
+                </span>
+              </button>
+              <button type="button" class="theme-option" :class="{ active: tempSettings.theme === 'light' }"
+                role="radio" :aria-checked="tempSettings.theme === 'light'" @click="tempSettings.theme = 'light'">
+                <span class="theme-preview light-preview" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </span>
+                <span class="theme-option-copy">
+                  <strong>☀️ 白天模式</strong>
+                  <small>浅色高对比，适合明亮环境</small>
+                </span>
+              </button>
+            </div>
+            <p class="hint-text">点击即可即时预览，保存后下次启动仍会使用所选主题。</p>
           </div>
 
           <div class="form-group">
@@ -262,6 +288,8 @@ const props = defineProps({
   isLoadingSTTModels: Boolean,
   isTestingConnection: Boolean,
   connectionStatus: Object,
+  isTestingRealtime: Boolean,
+  realtimeConnectionStatus: Object,
   renderedPrompt: String,
   resumeRawContent: String,
   isResumeParsing: Boolean,
@@ -278,6 +306,7 @@ const emit = defineEmits([
   'refresh-models',
   'refresh-stt-models',
   'test-connection',
+  'test-realtime-connection',
   'record-key',
   'select-resume',
   'clear-resume',
@@ -292,4 +321,114 @@ const currentTab = computed({
 })
 
 const promptTab = ref('edit')
+
+function onRealtimeToggle() {
+  if (props.tempSettings.realtimeEnabled) {
+    props.tempSettings.sttEnabled = false
+    props.tempSettings.voiceReply = false
+  }
+}
+
+function onSTTToggle() {
+  if (props.tempSettings.sttEnabled) {
+    props.tempSettings.realtimeEnabled = false
+  }
+}
 </script>
+
+<style scoped>
+.realtime-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.realtime-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.theme-option:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-card-hover);
+}
+
+.theme-option.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  box-shadow: var(--shadow-focus);
+}
+
+.theme-preview {
+  flex: 0 0 48px;
+  height: 36px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 6px;
+  border-radius: 7px;
+  box-sizing: border-box;
+  box-shadow: inset 0 0 0 1px rgba(100, 116, 139, 0.18);
+}
+
+.theme-preview span {
+  display: block;
+  height: 5px;
+  border-radius: 999px;
+}
+
+.theme-preview span:nth-child(1) { width: 12px; }
+.theme-preview span:nth-child(2) { width: 8px; }
+.theme-preview span:nth-child(3) { width: 14px; }
+.dark-preview { background: #111827; }
+.dark-preview span { background: #94a3b8; }
+.light-preview { background: #f8fafc; }
+.light-preview span { background: #475569; }
+
+.theme-option-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.theme-option-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.theme-option-copy small {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+@media (max-width: 520px) {
+  .theme-options {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
