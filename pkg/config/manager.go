@@ -153,6 +153,7 @@ func (cm *ConfigManager) Load() error {
 	}
 	cm.migrateLegacyRealtimeDefaults()
 	cm.applyRealtimeDefaults()
+	cm.applyRAGDefaults()
 
 	logger.Println("配置已加载")
 	return nil
@@ -254,6 +255,25 @@ func (cm *ConfigManager) applyRealtimeDefaults() {
 	}
 	if cm.config.RealtimeSilenceDurationMs == 0 {
 		cm.config.RealtimeSilenceDurationMs = defaults.RealtimeSilenceDurationMs
+	}
+}
+
+func (cm *ConfigManager) applyRAGDefaults() {
+	defaults := NewDefaultConfig()
+	if cm.config.RAGRetrievalMode == "" {
+		cm.config.RAGRetrievalMode = defaults.RAGRetrievalMode
+	}
+	if cm.config.RAGEmbeddingModel == "" {
+		cm.config.RAGEmbeddingModel = defaults.RAGEmbeddingModel
+	}
+	if cm.config.RAGEmbeddingDimensions == 0 {
+		cm.config.RAGEmbeddingDimensions = defaults.RAGEmbeddingDimensions
+	}
+	if cm.config.RAGTopK == 0 {
+		cm.config.RAGTopK = defaults.RAGTopK
+	}
+	if cm.config.RAGMaxContextChars == 0 {
+		cm.config.RAGMaxContextChars = defaults.RAGMaxContextChars
 	}
 }
 

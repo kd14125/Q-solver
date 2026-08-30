@@ -31,6 +31,27 @@ func TestRealtimeSettingsReconnectActiveQwenSession(t *testing.T) {
 	}
 }
 
+func TestRAGSettingsReconnectOnlyActiveQwenSession(t *testing.T) {
+	oldConfig := config.NewDefaultConfig()
+	oldConfig.UseLiveApi = true
+	oldConfig.RealtimeEnabled = true
+	newConfig := oldConfig
+	newConfig.RAGEnabled = true
+	newConfig.RAGRetrievalMode = "hybrid"
+
+	if !voiceSessionConfigChanged(newConfig, oldConfig) {
+		t.Fatal("修改 RAG 配置应重连正在运行的 Qwen Realtime 会话")
+	}
+
+	oldGemini := config.NewDefaultConfig()
+	oldGemini.UseLiveApi = true
+	newGemini := oldGemini
+	newGemini.RAGEnabled = true
+	if voiceSessionConfigChanged(newGemini, oldGemini) {
+		t.Fatal("RAG 配置不应影响 Gemini Live 或截图模型链路")
+	}
+}
+
 func TestScreenshotSettingsStillReconnectGeminiLiveSession(t *testing.T) {
 	oldConfig := config.NewDefaultConfig()
 	oldConfig.UseLiveApi = true

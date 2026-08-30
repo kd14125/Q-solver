@@ -64,6 +64,18 @@ type Config struct {
 	RealtimeVADThreshold      float64 `json:"realtimeVADThreshold"`
 	RealtimeSilenceDurationMs int     `json:"realtimeSilenceDurationMs"`
 
+	// 语音面试 RAG 配置。仅供 Qwen Realtime 使用，禁止读取截图模型配置。
+	RAGEnabled             bool   `json:"ragEnabled"`
+	RAGRetrievalMode       string `json:"ragRetrievalMode,omitempty"`
+	RAGEmbeddingModel      string `json:"ragEmbeddingModel,omitempty"`
+	RAGEmbeddingDimensions int    `json:"ragEmbeddingDimensions"`
+	RAGAPIKey              string `json:"ragAPIKey,omitempty"`
+	RAGWorkspaceID         string `json:"ragWorkspaceID,omitempty"`
+	RAGRegion              string `json:"ragRegion,omitempty"`
+	RAGBaseURL             string `json:"ragBaseURL,omitempty"`
+	RAGTopK                int    `json:"ragTopK"`
+	RAGMaxContextChars     int    `json:"ragMaxContextChars"`
+
 	// 窗口尺寸
 	WindowWidth        int     `json:"windowWidth,omitempty"`
 	WindowHeight       int     `json:"windowHeight,omitempty"`
@@ -161,6 +173,12 @@ func NewDefaultConfig() Config {
 		RealtimeVADType:           "semantic_vad",
 		RealtimeVADThreshold:      0.5,
 		RealtimeSilenceDurationMs: 800,
+		RAGEnabled:                false,
+		RAGRetrievalMode:          "hybrid",
+		RAGEmbeddingModel:         "qwen3.7-text-embedding",
+		RAGEmbeddingDimensions:    1024,
+		RAGTopK:                   5,
+		RAGMaxContextChars:        6000,
 		AITextTransparency:        0,
 		AITextColor:               "white",
 		HideTopBar:                false,
@@ -257,6 +275,21 @@ func (c *Config) Validate() error {
 	}
 	if c.RealtimeSilenceDurationMs < 200 || c.RealtimeSilenceDurationMs > 6000 {
 		return &ValidationError{Field: "realtimeSilenceDurationMs", Message: "静音时长必须在 200-6000ms 之间"}
+	}
+	if c.RAGRetrievalMode != "local" && c.RAGRetrievalMode != "api" && c.RAGRetrievalMode != "hybrid" {
+		return &ValidationError{Field: "ragRetrievalMode", Message: "RAG 检索模式必须是 local、api 或 hybrid"}
+	}
+	allowedDimension := c.RAGEmbeddingDimensions == 64 || c.RAGEmbeddingDimensions == 128 || c.RAGEmbeddingDimensions == 256 ||
+		c.RAGEmbeddingDimensions == 512 || c.RAGEmbeddingDimensions == 768 || c.RAGEmbeddingDimensions == 1024 ||
+		c.RAGEmbeddingDimensions == 1536 || c.RAGEmbeddingDimensions == 2048 || c.RAGEmbeddingDimensions == 2560
+	if !allowedDimension {
+		return &ValidationError{Field: "ragEmbeddingDimensions", Message: "Embedding 向量维度必须是 64、128、256、512、768、1024、1536、2048 或 2560"}
+	}
+	if c.RAGTopK < 1 || c.RAGTopK > 20 {
+		return &ValidationError{Field: "ragTopK", Message: "RAG Top K 必须在 1-20 之间"}
+	}
+	if c.RAGMaxContextChars < 500 || c.RAGMaxContextChars > 30000 {
+		return &ValidationError{Field: "ragMaxContextChars", Message: "RAG 上下文长度必须在 500-30000 之间"}
 	}
 	return nil
 }

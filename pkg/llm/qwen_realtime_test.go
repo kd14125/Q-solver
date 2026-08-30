@@ -123,6 +123,8 @@ func TestQwenRealtimeIntegration(t *testing.T) {
 	cfg.TopP = 0.8
 	cfg.TopK = 20
 	cfg.MaxTokens = 600
+	ragContext := os.Getenv("QWEN_REALTIME_RAG_CONTEXT")
+	cfg.RAGEnabled = ragContext != ""
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	session, err := NewQwenRealtimeProvider().ConnectLive(ctx, cfg)
@@ -155,6 +157,8 @@ func TestQwenRealtimeAudioIntegration(t *testing.T) {
 	cfg.TopP = 0.8
 	cfg.TopK = 20
 	cfg.MaxTokens = 600
+	ragContext := os.Getenv("QWEN_REALTIME_RAG_CONTEXT")
+	cfg.RAGEnabled = ragContext != ""
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	session, err := NewQwenRealtimeProvider().ConnectLive(ctx, cfg)
@@ -200,6 +204,7 @@ func TestQwenRealtimeAudioIntegration(t *testing.T) {
 	var answer strings.Builder
 	transcriptCompleted := 0
 	responseDone := 0
+	toolCalls := 0
 	for responseDone == 0 {
 		select {
 		case <-ctx.Done():
@@ -214,6 +219,14 @@ func TestQwenRealtimeAudioIntegration(t *testing.T) {
 				transcript.WriteString(message.Text)
 			case LiveMsgAIText:
 				answer.WriteString(message.Text)
+			case LiveMsgToolCall:
+				toolCalls++
+				if message.ToolName != "search_interview_knowledge" {
+					t.Fatalf("收到未知工具调用: %s", message.ToolName)
+				}
+				if err := session.SendToolResponse(message.ToolID, ragContext); err != nil {
+					t.Fatalf("回传 RAG 工具结果失败: %v", err)
+				}
 			case LiveMsgDone:
 				responseDone++
 			case LiveMsgError:
@@ -226,6 +239,9 @@ func TestQwenRealtimeAudioIntegration(t *testing.T) {
 	}
 	if responseDone != 1 || strings.TrimSpace(answer.String()) == "" {
 		t.Fatalf("回答完成次数或内容不正确: count=%d answer=%q", responseDone, answer.String())
+	}
+	if ragContext != "" && toolCalls != 1 {
+		t.Fatalf("RAG 开启时应且只应调用一次知识库工具: count=%d", toolCalls)
 	}
 	t.Logf("最终转录: %s", transcript.String())
 	t.Logf("文字回答: %s", answer.String())
@@ -299,6 +315,55 @@ func TestSessionUpdateUsesRealtimePromptAndParameters(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("session.update 缺少 %s: %s", want, text)
 		}
+	}
+}
+
+func TestSessionUpdateRegistersRAGToolOnlyWhenEnabled(t *testing.T) {
+	cfg := testRealtimeConfig()
+	payload := buildQwenSessionUpdate(cfg)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "search_interview_knowledge") {
+		t.Fatal("RAG 关闭时不应注册知识库工具")
+	}
+
+	cfg.RAGEnabled = true
+	payload = buildQwenSessionUpdate(cfg)
+	data, err = json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"search_interview_knowledge", "必须先调用", "禁止编造候选人"} {
+		if !strings.Contains(string(data), required) {
+			t.Fatalf("RAG session.update 缺少 %q: %s", required, data)
+		}
+	}
+}
+
+func TestQwenFunctionCallMapsToToolAndIntermediateDoneIsSuppressed(t *testing.T) {
+	session := &QwenRealtimeSession{
+		completedItems:   make(map[string]struct{}),
+		completedReplies: make(map[string]struct{}),
+		toolResponseIDs:  make(map[string]struct{}),
+	}
+	tool := session.convertEvent(qwenServerEvent{
+		Type:       "response.function_call_arguments.done",
+		ResponseID: "tool-response",
+		CallID:     "call-1",
+		Name:       "search_interview_knowledge",
+		Arguments:  `{"query":"介绍一下你的项目"}`,
+	})
+	if tool == nil || tool.Type != LiveMsgToolCall || tool.ToolID != "call-1" || !strings.Contains(tool.Text, "项目") {
+		t.Fatalf("function call mapping failed: %#v", tool)
+	}
+	if done := session.convertEvent(qwenServerEvent{Type: "response.done", ResponseID: "tool-response"}); done != nil {
+		t.Fatalf("工具中间响应不应结束当前轮次: %#v", done)
+	}
+	final := session.convertEvent(qwenServerEvent{Type: "response.done", ResponseID: "final-response"})
+	if final == nil || final.Type != LiveMsgDone {
+		t.Fatalf("最终文字响应应结束当前轮次: %#v", final)
 	}
 }
 

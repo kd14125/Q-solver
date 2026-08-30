@@ -6,6 +6,7 @@ import (
 	"Q-Solver/pkg/llm"
 	"Q-Solver/pkg/logger"
 	"Q-Solver/pkg/platform"
+	"Q-Solver/pkg/rag"
 	"Q-Solver/pkg/resume"
 	"Q-Solver/pkg/screen"
 	"Q-Solver/pkg/shortcut"
@@ -19,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -41,6 +43,7 @@ type App struct {
 	screenService   *screen.Service
 	solver          *solution.Solver
 	liveManager     *live.LiveSessionManager
+	ragService      *rag.Service
 	toolRegistry    *tools.Registry
 
 	// 手动截图缓存（发布版兼容：最多 3 张）
@@ -106,6 +109,13 @@ func (a *App) Startup(ctx context.Context) {
 	// 初始化简历服务
 	a.resumeService = resume.NewService(a.configManager.Get(), a.configManager)
 
+	// 初始化仅供 Qwen Realtime 使用的本地知识库。失败不影响截图答题。
+	if ragService, err := rag.NewService(""); err != nil {
+		logger.Printf("初始化面试知识库失败: %v", err)
+	} else {
+		a.ragService = ragService
+	}
+
 	// 初始化快捷键服务
 	a.shortcutService = shortcut.NewService(a, a.configManager.Get().Shortcuts, func(callback func(map[string]shortcut.KeyBinding)) {
 		a.configManager.Subscribe(func(NewConfig config.Config, oldConfig config.Config) {
@@ -125,6 +135,7 @@ func (a *App) Startup(ctx context.Context) {
 		a.llmService,
 		a.configManager,
 		a.screenService,
+		a.ragService,
 		a.EmitEvent,
 	)
 
@@ -179,7 +190,17 @@ func voiceSessionConfigChanged(newConfig, oldConfig config.Config) bool {
 			newConfig.RealtimeMaxTokens != oldConfig.RealtimeMaxTokens ||
 			newConfig.RealtimeVADType != oldConfig.RealtimeVADType ||
 			newConfig.RealtimeVADThreshold != oldConfig.RealtimeVADThreshold ||
-			newConfig.RealtimeSilenceDurationMs != oldConfig.RealtimeSilenceDurationMs
+			newConfig.RealtimeSilenceDurationMs != oldConfig.RealtimeSilenceDurationMs ||
+			newConfig.RAGEnabled != oldConfig.RAGEnabled ||
+			newConfig.RAGRetrievalMode != oldConfig.RAGRetrievalMode ||
+			newConfig.RAGEmbeddingModel != oldConfig.RAGEmbeddingModel ||
+			newConfig.RAGEmbeddingDimensions != oldConfig.RAGEmbeddingDimensions ||
+			newConfig.RAGAPIKey != oldConfig.RAGAPIKey ||
+			newConfig.RAGWorkspaceID != oldConfig.RAGWorkspaceID ||
+			newConfig.RAGRegion != oldConfig.RAGRegion ||
+			newConfig.RAGBaseURL != oldConfig.RAGBaseURL ||
+			newConfig.RAGTopK != oldConfig.RAGTopK ||
+			newConfig.RAGMaxContextChars != oldConfig.RAGMaxContextChars
 	}
 	if newConfig.STTEnabled {
 		return newConfig.STTAPIKey != oldConfig.STTAPIKey ||
@@ -206,6 +227,9 @@ func (a *App) OnShutdown(ctx context.Context) {
 	}
 	if a.shortcutService != nil {
 		a.shortcutService.Stop()
+	}
+	if a.ragService != nil {
+		_ = a.ragService.Close()
 	}
 	// 保存配置
 	if err := a.configManager.Save(); err != nil {
@@ -489,6 +513,138 @@ func (a *App) GetResumePDF() (string, error) {
 // ParseResume 解析简历为 Markdown
 func (a *App) ParseResume() (string, error) {
 	return a.resumeService.ParseResume(a.ctx, a.llmService.GetProvider())
+}
+
+// ==================== 语音面试知识库 ====================
+
+func (a *App) ragSettingsFromJSON(configJSON string) (rag.Settings, error) {
+	cfg := a.configManager.Get()
+	if configJSON != "" {
+		if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+			return rag.Settings{}, fmt.Errorf("解析 RAG 配置失败: %w", err)
+		}
+	}
+	return rag.SettingsFromConfig(cfg), nil
+}
+
+func (a *App) GetRAGKnowledge(configJSON string) (rag.Snapshot, error) {
+	if a.ragService == nil {
+		return rag.Snapshot{}, fmt.Errorf("面试知识库未初始化")
+	}
+	settings, err := a.ragSettingsFromJSON(configJSON)
+	if err != nil {
+		return rag.Snapshot{}, err
+	}
+	return a.ragService.List(a.ctx, settings)
+}
+
+func (a *App) ImportRAGFiles(configJSON string) ([]rag.ImportResult, error) {
+	if a.ragService == nil {
+		return nil, fmt.Errorf("面试知识库未初始化")
+	}
+	paths, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "导入面试知识库资料",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "知识库资料 (PDF, DOCX, TXT, Markdown)", Pattern: "*.pdf;*.docx;*.txt;*.md;*.markdown"},
+		},
+	})
+	if err != nil || len(paths) == 0 {
+		return nil, err
+	}
+	settings, err := a.ragSettingsFromJSON(configJSON)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]rag.ImportResult, 0, len(paths))
+	for index, path := range paths {
+		a.EmitEvent("rag:index-progress", map[string]any{"current": index, "total": len(paths), "name": filepath.Base(path)})
+		result, importErr := a.ragService.ImportFile(a.ctx, path, settings)
+		if importErr != nil {
+			result.Path = path
+			result.Warning = importErr.Error()
+		}
+		results = append(results, result)
+	}
+	a.EmitEvent("rag:index-progress", map[string]any{"current": len(paths), "total": len(paths)})
+	return results, nil
+}
+
+func (a *App) AddRAGQA(question, answer, configJSON string) (rag.QAEntry, error) {
+	if a.ragService == nil {
+		return rag.QAEntry{}, fmt.Errorf("面试知识库未初始化")
+	}
+	settings, err := a.ragSettingsFromJSON(configJSON)
+	if err != nil {
+		return rag.QAEntry{}, err
+	}
+	return a.ragService.AddQA(a.ctx, question, answer, settings)
+}
+
+func (a *App) UpdateRAGQA(id int64, question, answer, configJSON string) error {
+	if a.ragService == nil {
+		return fmt.Errorf("面试知识库未初始化")
+	}
+	settings, err := a.ragSettingsFromJSON(configJSON)
+	if err != nil {
+		return err
+	}
+	return a.ragService.UpdateQA(a.ctx, id, question, answer, settings)
+}
+
+func (a *App) DeleteRAGQA(id int64) error {
+	if a.ragService == nil {
+		return fmt.Errorf("面试知识库未初始化")
+	}
+	return a.ragService.DeleteQA(a.ctx, id)
+}
+
+func (a *App) DeleteRAGDocument(id int64) error {
+	if a.ragService == nil {
+		return fmt.Errorf("面试知识库未初始化")
+	}
+	return a.ragService.DeleteDocument(a.ctx, id)
+}
+
+func (a *App) RebuildRAGIndex(configJSON string) (rag.IndexResult, error) {
+	if a.ragService == nil {
+		return rag.IndexResult{}, fmt.Errorf("面试知识库未初始化")
+	}
+	settings, err := a.ragSettingsFromJSON(configJSON)
+	if err != nil {
+		return rag.IndexResult{}, err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Minute)
+	defer cancel()
+	return a.ragService.RebuildIndex(ctx, settings)
+}
+
+func (a *App) TestRAGEmbedding(configJSON string) string {
+	if a.ragService == nil {
+		return "面试知识库未初始化"
+	}
+	settings, err := a.ragSettingsFromJSON(configJSON)
+	if err != nil {
+		return err.Error()
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
+	defer cancel()
+	if err := a.ragService.TestEmbedding(ctx, settings); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+func (a *App) TestRAGSearch(query, configJSON string) (rag.SearchTestResult, error) {
+	if a.ragService == nil {
+		return rag.SearchTestResult{}, fmt.Errorf("面试知识库未初始化")
+	}
+	settings, err := a.ragSettingsFromJSON(configJSON)
+	if err != nil {
+		return rag.SearchTestResult{}, err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.ragService.TestSearch(ctx, query, settings)
 }
 
 // ==================== 截图相关 ====================

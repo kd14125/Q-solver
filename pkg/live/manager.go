@@ -5,10 +5,12 @@ import (
 	"Q-Solver/pkg/config"
 	"Q-Solver/pkg/llm"
 	"Q-Solver/pkg/logger"
+	"Q-Solver/pkg/rag"
 	"Q-Solver/pkg/screen"
 	"Q-Solver/pkg/stt"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,6 +41,7 @@ type LiveSessionManager struct {
 	llmService    *llm.Service
 	configManager *config.ConfigManager
 	screenService *screen.Service
+	ragService    *rag.Service
 	emitEvent     func(string, ...any)
 
 	// Live Session 状态 (使用 atomic.Pointer 实现无锁访问)
@@ -74,6 +77,7 @@ func NewLiveSessionManager(
 	llmService *llm.Service,
 	configManager *config.ConfigManager,
 	screenService *screen.Service,
+	ragService *rag.Service,
 	emitEvent func(string, ...any),
 ) *LiveSessionManager {
 	return &LiveSessionManager{
@@ -81,6 +85,7 @@ func NewLiveSessionManager(
 		llmService:    llmService,
 		configManager: configManager,
 		screenService: screenService,
+		ragService:    ragService,
 		emitEvent:     emitEvent,
 	}
 }
@@ -548,7 +553,9 @@ func (m *LiveSessionManager) receiveLoop() {
 
 		case llm.LiveMsgToolCall:
 			logger.Printf("[receiveLoop] Live: 工具调用 %s (ID=%s)", msg.ToolName, msg.ToolID)
-			if msg.ToolName == "get_screenshot" {
+			if msg.ToolName == "search_interview_knowledge" {
+				m.handleRAGSearch(*session, msg)
+			} else if msg.ToolName == "get_screenshot" {
 				m.handleScreenshot(*session, msg.ToolID)
 			}
 
@@ -573,6 +580,37 @@ func (m *LiveSessionManager) receiveLoop() {
 			m.errorChan <- &liveError{msg.Text}
 			return
 		}
+	}
+}
+
+func (m *LiveSessionManager) handleRAGSearch(session llm.LiveSession, msg *llm.LiveMessage) {
+	var arguments struct {
+		Query string `json:"query"`
+	}
+	_ = json.Unmarshal([]byte(msg.Text), &arguments)
+	if strings.TrimSpace(arguments.Query) == "" {
+		m.roundMu.Lock()
+		arguments.Query = m.currentQuestion.String()
+		m.roundMu.Unlock()
+	}
+
+	toolResult := "知识库未启用或不可用。请使用通用知识回答，但不得编造候选人的个人经历、公司、项目、职责或数据。"
+	cfg := m.configManager.Get()
+	if cfg.RAGEnabled && m.ragService != nil && strings.TrimSpace(arguments.Query) != "" {
+		searchCtx, cancel := context.WithTimeout(m.cancelCtx, 15*time.Second)
+		result, err := m.ragService.Search(searchCtx, arguments.Query, rag.SettingsFromConfig(cfg))
+		cancel()
+		if err == nil {
+			toolResult = m.ragService.FormatContext(result, cfg.RAGMaxContextChars)
+		} else if m.cancelCtx.Err() != nil {
+			return
+		} else {
+			logger.Printf("[handleRAGSearch] 知识库检索失败: %v", err)
+			toolResult = "知识库检索暂时失败。请使用通用知识回答，但不得编造候选人的个人经历、公司、项目、职责或数据。"
+		}
+	}
+	if err := session.SendToolResponse(msg.ToolID, toolResult); err != nil && m.cancelCtx.Err() == nil {
+		logger.Printf("[handleRAGSearch] 回传知识库结果失败: %v", err)
 	}
 }
 

@@ -15,6 +15,8 @@ func TestPartialUpdatesKeepScreenshotAndRealtimeSettingsIsolated(t *testing.T) {
 	cm.config.RealtimeWorkspaceID = "workspace-1"
 	cm.config.APIKey = "screenshot-secret"
 	cm.config.Model = "screenshot-model"
+	cm.config.RAGEmbeddingModel = "qwen3.7-text-embedding"
+	cm.config.RAGWorkspaceID = "rag-workspace"
 
 	if err := cm.UpdateFromJSON(`{"model":"new-screenshot-model"}`); err != nil {
 		t.Fatal(err)
@@ -23,6 +25,9 @@ func TestPartialUpdatesKeepScreenshotAndRealtimeSettingsIsolated(t *testing.T) {
 	if got.RealtimeAPIKey != "voice-secret" || got.RealtimeWorkspaceID != "workspace-1" {
 		t.Fatalf("screenshot update overwrote realtime settings: %+v", got)
 	}
+	if got.RAGEmbeddingModel != "qwen3.7-text-embedding" || got.RAGWorkspaceID != "rag-workspace" {
+		t.Fatalf("screenshot update overwrote RAG settings: %+v", got)
+	}
 
 	if err := cm.UpdateFromJSON(`{"realtimeModel":"new-voice-model","realtimePrompt":"voice prompt"}`); err != nil {
 		t.Fatal(err)
@@ -30,6 +35,14 @@ func TestPartialUpdatesKeepScreenshotAndRealtimeSettingsIsolated(t *testing.T) {
 	got = cm.Get()
 	if got.APIKey != "screenshot-secret" || got.Model != "new-screenshot-model" {
 		t.Fatalf("realtime update overwrote screenshot settings: %+v", got)
+	}
+
+	if err := cm.UpdateFromJSON(`{"ragRetrievalMode":"local","ragTopK":8}`); err != nil {
+		t.Fatal(err)
+	}
+	got = cm.Get()
+	if got.APIKey != "screenshot-secret" || got.RealtimeAPIKey != "voice-secret" {
+		t.Fatalf("RAG update overwrote screenshot or realtime settings: %+v", got)
 	}
 }
 
@@ -50,8 +63,24 @@ func TestOldConfigLoadsWithRealtimeDefaults(t *testing.T) {
 	if got.RealtimeModel != "qwen3.5-omni-plus-realtime" || got.RealtimePrompt == "" {
 		t.Fatalf("realtime defaults missing: %+v", got)
 	}
+	if got.RAGEnabled || got.RAGRetrievalMode != "hybrid" || got.RAGEmbeddingModel != "qwen3.7-text-embedding" || got.RAGEmbeddingDimensions != 1024 {
+		t.Fatalf("RAG defaults missing or unexpectedly enabled: %+v", got)
+	}
 	if got.Theme != "dark" {
 		t.Fatalf("旧配置没有使用夜间主题默认值: theme=%q", got.Theme)
+	}
+}
+
+func TestRAGValidationRejectsInvalidModeAndDimensions(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.RAGRetrievalMode = "unknown"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("invalid RAG mode should be rejected")
+	}
+	cfg = NewDefaultConfig()
+	cfg.RAGEmbeddingDimensions = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("invalid embedding dimensions should be rejected")
 	}
 }
 

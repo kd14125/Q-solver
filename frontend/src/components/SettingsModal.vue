@@ -138,6 +138,7 @@
             </div>
             <button class="btn-primary" type="button" @click="$emit('test-realtime-connection')" :disabled="isTestingRealtime || !tempSettings.realtimeAPIKey || (!tempSettings.realtimeWorkspaceID && !tempSettings.realtimeBaseURL)">{{ isTestingRealtime ? '连接中…' : '测试语音 API 连接' }}</button>
             <div v-if="realtimeConnectionStatus" class="connection-status" :class="realtimeConnectionStatus.type"><span class="status-icon">{{ realtimeConnectionStatus.icon }}</span><span class="status-text">{{ realtimeConnectionStatus.message }}</span></div>
+            <RAGSettings :settings="tempSettings" />
           </template>
 
           <div class="form-group context-setting" style="margin-top: 18px;">
@@ -327,6 +328,7 @@ import ScreenshotSettings from './ScreenshotSettings.vue'
 import ProviderSelect from './ProviderSelect.vue'
 import ModelSelect from './ModelSelect.vue'
 import LLMParamsConfig from './LLMParamsConfig.vue'
+import RAGSettings from './RAGSettings.vue'
 
 const props = defineProps({
   show: Boolean,

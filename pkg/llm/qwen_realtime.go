@@ -53,6 +53,7 @@ func (p *QwenRealtimeProvider) ConnectLive(ctx context.Context, cfg *LiveConfig)
 		closed:           make(chan struct{}),
 		completedItems:   make(map[string]struct{}),
 		completedReplies: make(map[string]struct{}),
+		toolResponseIDs:  make(map[string]struct{}),
 	}
 	if err := session.sendJSON(buildQwenSessionUpdate(cfg)); err != nil {
 		session.Close()
@@ -117,27 +118,48 @@ func buildQwenRealtimeURL(cfg *LiveConfig) (string, error) {
 }
 
 func buildQwenSessionUpdate(cfg *LiveConfig) map[string]any {
-	return map[string]any{
-		"type": "session.update",
-		"session": map[string]any{
-			"modalities":   []string{"text"},
-			"instructions": cfg.SystemInstruction,
-			"audio": map[string]any{
-				"input": map[string]any{
-					"format": map[string]any{"type": "pcm", "sample_rate": 16000},
+	instructions := cfg.SystemInstruction
+	session := map[string]any{
+		"modalities":   []string{"text"},
+		"instructions": instructions,
+		"audio": map[string]any{
+			"input": map[string]any{
+				"format": map[string]any{"type": "pcm", "sample_rate": 16000},
+			},
+		},
+		"input_audio_transcription": map[string]any{"model": qwenRealtimeTranscriptionModel},
+		"turn_detection": map[string]any{
+			"type":                cfg.VADType,
+			"threshold":           cfg.VADThreshold,
+			"silence_duration_ms": cfg.SilenceDurationMs,
+		},
+		"max_tokens":  cfg.MaxTokens,
+		"temperature": cfg.Temperature,
+		"top_p":       cfg.TopP,
+		"top_k":       cfg.TopK,
+	}
+	if cfg.RAGEnabled {
+		session["instructions"] = instructions + `
+
+知识库规则：每当你判断语音构成完整的面试问题或追问时，必须先调用 search_interview_knowledge 检索候选人的知识库，再生成最终答案。优先使用工具返回的个人经历、项目、技能和参考答案。工具未命中时可以使用通用知识，但禁止编造候选人的公司、项目、职责或数据。不要向用户展示工具调用过程或资料来源。`
+		session["tools"] = []map[string]any{{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "search_interview_knowledge",
+				"description": "检索候选人的本地面试知识库。回答每个完整的面试问题前都必须调用一次。",
+				"parameters": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"query": map[string]any{"type": "string", "description": "当前完整面试问题，保留关键技术词和项目名称"},
+					},
+					"required": []string{"query"},
 				},
 			},
-			"input_audio_transcription": map[string]any{"model": qwenRealtimeTranscriptionModel},
-			"turn_detection": map[string]any{
-				"type":                cfg.VADType,
-				"threshold":           cfg.VADThreshold,
-				"silence_duration_ms": cfg.SilenceDurationMs,
-			},
-			"max_tokens":  cfg.MaxTokens,
-			"temperature": cfg.Temperature,
-			"top_p":       cfg.TopP,
-			"top_k":       cfg.TopK,
-		},
+		}}
+	}
+	return map[string]any{
+		"type":    "session.update",
+		"session": session,
 	}
 }
 
@@ -158,6 +180,7 @@ type QwenRealtimeSession struct {
 	eventMu          sync.Mutex
 	completedItems   map[string]struct{}
 	completedReplies map[string]struct{}
+	toolResponseIDs  map[string]struct{}
 }
 
 func (s *QwenRealtimeSession) SendAudio(data []byte) error {
@@ -196,8 +219,21 @@ func (s *QwenRealtimeSession) Receive() (*LiveMessage, error) {
 	}
 }
 
-func (s *QwenRealtimeSession) SendToolResponse(string, string) error {
-	return errors.New("Qwen Realtime 文本会话不支持工具调用")
+func (s *QwenRealtimeSession) SendToolResponse(toolID string, result string) error {
+	if strings.TrimSpace(toolID) == "" {
+		return errors.New("Qwen Realtime 工具调用 ID 不能为空")
+	}
+	return s.sendJSONSequence(
+		map[string]any{
+			"type": "conversation.item.create",
+			"item": map[string]any{
+				"type":    "function_call_output",
+				"call_id": toolID,
+				"output":  result,
+			},
+		},
+		map[string]any{"type": "response.create"},
+	)
 }
 
 func (s *QwenRealtimeSession) SendToolResponseWithImage(string, []byte, string) error {
@@ -226,6 +262,9 @@ type qwenServerEvent struct {
 	Delta      string          `json:"delta"`
 	Stash      string          `json:"stash"`
 	Transcript string          `json:"transcript"`
+	CallID     string          `json:"call_id"`
+	Name       string          `json:"name"`
+	Arguments  string          `json:"arguments"`
 	Error      json.RawMessage `json:"error"`
 }
 
@@ -253,10 +292,27 @@ func (s *QwenRealtimeSession) convertEvent(event qwenServerEvent) *LiveMessage {
 	case "response.text.done":
 		// done.text 是完整答案；增量已显示，因此这里不能再次追加。
 		return nil
+	case "response.function_call_arguments.done":
+		if event.Name != "search_interview_knowledge" || strings.TrimSpace(event.CallID) == "" {
+			return nil
+		}
+		s.eventMu.Lock()
+		if s.toolResponseIDs == nil {
+			s.toolResponseIDs = make(map[string]struct{})
+		}
+		if event.ResponseID != "" {
+			s.toolResponseIDs[event.ResponseID] = struct{}{}
+		}
+		s.eventMu.Unlock()
+		return &LiveMessage{Type: LiveMsgToolCall, ToolName: event.Name, ToolID: event.CallID, Text: event.Arguments, ResponseID: event.ResponseID}
 	case "response.done":
 		responseID := event.ResponseID
 		if responseID == "" {
 			responseID = event.Response.ID
+		}
+		if s.consumeToolResponse(responseID) {
+			// Function Call 是中间响应，工具结果回传后还会有最终文字响应。
+			return nil
 		}
 		if !s.markOnce(s.completedReplies, responseID) {
 			return nil
@@ -267,6 +323,36 @@ func (s *QwenRealtimeSession) convertEvent(event qwenServerEvent) *LiveMessage {
 	default:
 		return nil
 	}
+}
+
+func (s *QwenRealtimeSession) sendJSONSequence(values ...any) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	select {
+	case <-s.closed:
+		return errors.New("Qwen Realtime 会话已关闭")
+	default:
+	}
+	_ = s.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	for _, value := range values {
+		if err := s.conn.WriteJSON(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *QwenRealtimeSession) consumeToolResponse(responseID string) bool {
+	if responseID == "" {
+		return false
+	}
+	s.eventMu.Lock()
+	defer s.eventMu.Unlock()
+	if _, found := s.toolResponseIDs[responseID]; !found {
+		return false
+	}
+	delete(s.toolResponseIDs, responseID)
+	return true
 }
 
 func (s *QwenRealtimeSession) markOnce(seen map[string]struct{}, id string) bool {

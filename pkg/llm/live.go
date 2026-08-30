@@ -54,6 +54,7 @@ type LiveConfig struct {
 	VADType           string
 	VADThreshold      float64
 	SilenceDurationMs int
+	RAGEnabled        bool
 }
 
 // GetRealtimeLiveConfig 只从语音面试配置创建 LiveConfig，避免误用截图答题配置。
@@ -72,6 +73,7 @@ func GetRealtimeLiveConfig(cfg config.Config) *LiveConfig {
 		VADType:           cfg.RealtimeVADType,
 		VADThreshold:      cfg.RealtimeVADThreshold,
 		SilenceDurationMs: cfg.RealtimeSilenceDurationMs,
+		RAGEnabled:        cfg.RAGEnabled,
 	}
 }
 

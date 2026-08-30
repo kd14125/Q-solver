@@ -67,6 +67,16 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     realtimeVADType: 'semantic_vad',
     realtimeVADThreshold: 0.5,
     realtimeSilenceDurationMs: 800,
+    ragEnabled: false,
+    ragRetrievalMode: 'hybrid',
+    ragEmbeddingModel: 'qwen3.7-text-embedding',
+    ragEmbeddingDimensions: 1024,
+    ragAPIKey: '',
+    ragWorkspaceID: '',
+    ragRegion: '',
+    ragBaseURL: '',
+    ragTopK: 5,
+    ragMaxContextChars: 6000,
     // LLM 生成参数
     temperature: 1.0,
     topP: 0.95,
@@ -208,6 +218,16 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     settings.realtimeVADType = config.realtimeVADType || 'semantic_vad'
     settings.realtimeVADThreshold = config.realtimeVADThreshold !== undefined ? config.realtimeVADThreshold : 0.5
     settings.realtimeSilenceDurationMs = config.realtimeSilenceDurationMs !== undefined ? config.realtimeSilenceDurationMs : 800
+    settings.ragEnabled = config.ragEnabled === true
+    settings.ragRetrievalMode = ['local', 'api', 'hybrid'].includes(config.ragRetrievalMode) ? config.ragRetrievalMode : 'hybrid'
+    settings.ragEmbeddingModel = config.ragEmbeddingModel || 'qwen3.7-text-embedding'
+    settings.ragEmbeddingDimensions = Number(config.ragEmbeddingDimensions) || 1024
+    settings.ragAPIKey = config.ragAPIKey || ''
+    settings.ragWorkspaceID = config.ragWorkspaceID || ''
+    settings.ragRegion = config.ragRegion || ''
+    settings.ragBaseURL = config.ragBaseURL || ''
+    settings.ragTopK = Number(config.ragTopK) || 5
+    settings.ragMaxContextChars = Number(config.ragMaxContextChars) || 6000
     // LLM 生成参数
     settings.temperature = config.temperature !== undefined ? config.temperature : 1.0
     settings.topP = config.topP !== undefined ? config.topP : 0.95
@@ -422,6 +442,16 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
         realtimeVADType: tempSettings.realtimeVADType,
         realtimeVADThreshold: tempSettings.realtimeVADThreshold,
         realtimeSilenceDurationMs: tempSettings.realtimeSilenceDurationMs,
+        ragEnabled: tempSettings.ragEnabled,
+        ragRetrievalMode: tempSettings.ragRetrievalMode,
+        ragEmbeddingModel: tempSettings.ragEmbeddingModel,
+        ragEmbeddingDimensions: tempSettings.ragEmbeddingDimensions,
+        ragAPIKey: tempSettings.ragAPIKey,
+        ragWorkspaceID: tempSettings.ragWorkspaceID,
+        ragRegion: tempSettings.ragRegion,
+        ragBaseURL: tempSettings.ragBaseURL,
+        ragTopK: tempSettings.ragTopK,
+        ragMaxContextChars: tempSettings.ragMaxContextChars,
         // LLM 生成参数
         temperature: tempSettings.temperature,
         topP: tempSettings.topP,
