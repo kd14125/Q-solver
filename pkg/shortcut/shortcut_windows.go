@@ -455,7 +455,7 @@ func onKeysChanged(manager *Manager) bool {
 	currentComboID := GetComboID(manager.heldKeys)
 	for action, savedComboID := range manager.Shortcuts {
 		if savedComboID.ComboID == currentComboID {
-			if manager.triggeredCombo == currentComboID {
+			if manager.triggeredCombo == currentComboID && !isRepeatableAction(action) {
 				return true
 			}
 			manager.triggeredCombo = currentComboID
@@ -468,6 +468,19 @@ func onKeysChanged(manager *Manager) bool {
 		}
 	}
 	return false
+}
+
+// isRepeatableAction limits Windows key-repeat handling to continuous controls.
+// One-shot actions such as screenshot, send and visibility toggles must still
+// fire only once per physical key press.
+func isRepeatableAction(action string) bool {
+	switch action {
+	case "move_up", "move_down", "move_left", "move_right",
+		"scroll_up", "scroll_down":
+		return true
+	default:
+		return false
+	}
 }
 
 // finishRecordingLocked requires manager.mu to be held by the caller.

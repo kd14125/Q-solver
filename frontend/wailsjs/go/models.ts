@@ -51,6 +51,7 @@ export namespace config {
 	    aiFontSize?: number;
 	    codeWrap?: boolean;
 	    aiTextTransparency?: number;
+	    aiTextColor?: string;
 	    hideTopBar?: boolean;
 	    hideHistoryPanel?: boolean;
 	
@@ -110,6 +111,7 @@ export namespace config {
 	        this.aiFontSize = source["aiFontSize"];
 	        this.codeWrap = source["codeWrap"];
 	        this.aiTextTransparency = source["aiTextTransparency"];
+	        this.aiTextColor = source["aiTextColor"];
 	        this.hideTopBar = source["hideTopBar"];
 	        this.hideHistoryPanel = source["hideHistoryPanel"];
 	    }

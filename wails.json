@@ -9,10 +9,10 @@
   "info": {
     "companyName": "Q-Solver Contributors",
     "productName": "Q-Solver",
-    "productVersion": "1.3.0",
+    "productVersion": "1.3.1",
     "copyright": "Copyright © 2026 Q-Solver Contributors.",
     "comments": "AI screenshot solver and realtime interview assistant",
-    "fileVersion": "1.3.0",
+    "fileVersion": "1.3.1",
     "fileDescription": "Q-Solver Desktop Assistant"
   }
 }

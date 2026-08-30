@@ -76,6 +76,7 @@
     --text-xl: 18px;
     --ai-font-size: 14px;
     --ai-text-opacity: 1;
+    --ai-text-color: #ffffff;
 
     /* Transitions */
     --transition-fast: 0.15s ease;
@@ -186,6 +187,52 @@
 :root[data-transparency="ultra"] .status-success {
     background-color: rgba(255, 255, 255, 0.018);
     border-color: rgba(255, 255, 255, 0.07);
+}
+
+/* 只要启用窗口透明度，自动出现的状态就只保留必要文字，禁止错误、成功、警告等
+   临时状态用彩色底块、边框或发光效果覆盖屏幕。设置弹窗和用户主动打开的
+   状态面板不在此范围内。 */
+:root[data-transparent-mode="on"] .toast,
+:root[data-transparent-mode="on"] .toast.error,
+:root[data-transparent-mode="on"] .toast.success,
+:root[data-transparent-mode="on"] .toast.warning,
+:root[data-transparent-mode="on"] .toast.info,
+:root[data-transparent-mode="on"] .status-loading,
+:root[data-transparent-mode="on"] .status-success,
+:root[data-transparent-mode="on"] .thinking-block {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
+
+:root[data-transparent-mode="on"] .toast {
+    border: 0 !important;
+    color: var(--ai-text-color) !important;
+}
+
+:root[data-transparent-mode="on"] .status-loading,
+:root[data-transparent-mode="on"] .status-success,
+:root[data-transparent-mode="on"] .loading-text,
+:root[data-transparent-mode="on"] .success-text,
+:root[data-transparent-mode="on"] .thinking-block,
+:root[data-transparent-mode="on"] .thinking-block * {
+    color: var(--ai-text-color) !important;
+}
+
+:root[data-transparent-mode="on"] .status-dot {
+    background: var(--ai-text-color) !important;
+    box-shadow: none !important;
+    opacity: 0.45;
+}
+
+:root[data-transparent-mode="on"] .thinking-icon,
+:root[data-transparent-mode="on"] .success-icon,
+:root[data-transparent-mode="on"] .loading-spinner,
+:root[data-transparent-mode="on"] .card-glow {
+    display: none !important;
 }
 
 :root[data-theme="light"][data-transparency="high"] #app,
@@ -834,8 +881,8 @@ body {
     font-weight: 500;
 }
 
-/* AI 回答采用纯白文字和完全透明背景。这里使用 !important 覆盖 marked、
-   highlight.js 及行内语法高亮可能写入的颜色和背景。 */
+/* AI 回答采用用户选择的黑/白文字和完全透明背景。这里使用 !important
+   覆盖 marked、highlight.js 及行内语法高亮可能写入的颜色和背景。 */
 .right-panel,
 .markdown-body .ai-response,
 .markdown-body .ai-response :is(div, p, span, strong, em, ul, ol, li, h1, h2, h3, h4, pre, code, table, thead, tbody, tr, th, td, blockquote) {
@@ -856,11 +903,11 @@ body {
 .markdown-body .ai-response :is(p, span, strong, em, li, h1, h2, h3, h4, code, th, td, blockquote, a),
 .markdown-body .ai-response .code-line-number,
 .markdown-body .ai-response .code-line-text {
-    color: #ffffff !important;
+    color: var(--ai-text-color) !important;
 }
 
 .markdown-body .ai-response li::marker {
-    color: #ffffff !important;
+    color: var(--ai-text-color) !important;
 }
 
 .markdown-body .ai-response pre,

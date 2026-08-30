@@ -278,3 +278,47 @@ func TestLegacyAITextOpacityMigratesAsUserVisibleTransparency(t *testing.T) {
 		t.Fatalf("旧版滑块值没有按透明度语义迁移: got=%v want=0.95", got)
 	}
 }
+
+func TestAITextColorDefaultsToWhiteForLegacyConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"theme":"dark"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cm := NewConfigManager()
+	cm.configPath = configPath
+	cm.legacyPaths = nil
+	if err := cm.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if got := cm.Get().AITextColor; got != "white" {
+		t.Fatalf("旧配置应默认使用白色 AI 文字: got=%q", got)
+	}
+}
+
+func TestAITextColorPersistsBlack(t *testing.T) {
+	cm := NewConfigManager()
+	cm.configPath = filepath.Join(t.TempDir(), "config.json")
+	cm.legacyPaths = nil
+	if err := cm.UpdateFromJSON(`{"aiTextColor":"black"}`); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := NewConfigManager()
+	reloaded.configPath = cm.configPath
+	reloaded.legacyPaths = nil
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if got := reloaded.Get().AITextColor; got != "black" {
+		t.Fatalf("黑色 AI 文字没有正确持久化: got=%q", got)
+	}
+}
+
+func TestAITextColorRejectsUnsupportedValues(t *testing.T) {
+	config := NewDefaultConfig()
+	config.AITextColor = "green"
+	if err := config.Validate(); err == nil {
+		t.Fatal("不支持的 AI 文字颜色应被拒绝")
+	}
+}

@@ -76,6 +76,7 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     aiFontSize: 14,
     codeWrap: false,
     aiTextTransparency: 0,
+    aiTextColor: 'white',
     hideTopBar: false,
     hideHistoryPanel: false,
     windowWidth: 0,
@@ -101,6 +102,7 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
 
     document.documentElement.dataset.theme = normalizedTheme
     document.documentElement.dataset.transparency = normalizedTransparency >= 0.6 ? 'ultra' : normalizedTransparency >= 0.3 ? 'high' : 'normal'
+    document.documentElement.dataset.transparentMode = normalizedTransparency > 0 ? 'on' : 'off'
     const app = document.getElementById('app')
     if (app) {
       app.style.backgroundColor = `rgba(${baseRGB}, ${opacity})`
@@ -113,12 +115,18 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     document.documentElement.style.setProperty('--ai-text-opacity', String(opacity))
   }
 
+  function applyAITextColor(value) {
+    const normalizedColor = value === 'black' ? '#000000' : '#ffffff'
+    document.documentElement.style.setProperty('--ai-text-color', normalizedColor)
+  }
+
   // 设置面板中切换主题或透明度时即时预览，保存前不通知后端。
   watch(() => [tempSettings.theme, tempSettings.transparency], ([theme, transparency]) => {
     applyTheme(theme, transparency)
   })
 
   watch(() => tempSettings.aiTextTransparency, applyAITextTransparency, { immediate: true })
+  watch(() => tempSettings.aiTextColor, applyAITextColor, { immediate: true })
 
   // 监听 API Key 变化（只有真正变化时才重置状态）
   let lastApiKey = ''
@@ -209,6 +217,7 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     settings.aiFontSize = Math.min(32, Math.max(10, Number(config.aiFontSize) || 14))
     settings.codeWrap = config.codeWrap === true
     settings.aiTextTransparency = Math.min(0.95, Math.max(0, Number(config.aiTextTransparency) || 0))
+    settings.aiTextColor = config.aiTextColor === 'black' ? 'black' : 'white'
     settings.hideTopBar = config.hideTopBar === true
     settings.hideHistoryPanel = config.hideHistoryPanel === true
     settings.windowWidth = Number(config.windowWidth) || 0
@@ -221,6 +230,7 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
 
     applyTheme(settings.theme, settings.transparency)
     applyAITextTransparency(settings.aiTextTransparency)
+    applyAITextColor(settings.aiTextColor)
 
     // 同步到 tempSettings，确保设置面板显示正确的值
     Object.assign(tempSettings, JSON.parse(JSON.stringify(settings)))
@@ -421,6 +431,7 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
         aiFontSize: tempSettings.aiFontSize,
         codeWrap: tempSettings.codeWrap,
         aiTextTransparency: Math.min(0.95, Math.max(0, Number(tempSettings.aiTextTransparency) || 0)),
+        aiTextColor: tempSettings.aiTextColor === 'black' ? 'black' : 'white',
         hideTopBar: tempSettings.hideTopBar === true,
         hideHistoryPanel: tempSettings.hideHistoryPanel === true,
         windowWidth: settings.windowWidth || 0,
@@ -455,6 +466,8 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
   function resetTempSettings() {
     Object.assign(tempSettings, settings)
     applyTheme(settings.theme, settings.transparency)
+    applyAITextTransparency(settings.aiTextTransparency)
+    applyAITextColor(settings.aiTextColor)
   }
 
   /**

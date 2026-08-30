@@ -144,6 +144,9 @@ func (cm *ConfigManager) Load() error {
 	if cm.config.AITextTransparency < 0 || cm.config.AITextTransparency > 1 {
 		cm.config.AITextTransparency = 0
 	}
+	if cm.config.AITextColor != "white" && cm.config.AITextColor != "black" {
+		cm.config.AITextColor = "white"
+	}
 	// 为旧版空 Prompt 配置补充通用解题提示词。
 	if cm.config.Prompt == "" {
 		cm.config.Prompt = DefaultPrompt

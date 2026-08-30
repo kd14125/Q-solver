@@ -70,6 +70,7 @@ type Config struct {
 	AIFontSize         int     `json:"aiFontSize,omitempty"`
 	CodeWrap           bool    `json:"codeWrap,omitempty"`
 	AITextTransparency float64 `json:"aiTextTransparency,omitempty"`
+	AITextColor        string  `json:"aiTextColor,omitempty"`
 	HideTopBar         bool    `json:"hideTopBar,omitempty"`
 	HideHistoryPanel   bool    `json:"hideHistoryPanel,omitempty"`
 }
@@ -161,6 +162,7 @@ func NewDefaultConfig() Config {
 		RealtimeVADThreshold:      0.5,
 		RealtimeSilenceDurationMs: 800,
 		AITextTransparency:        0,
+		AITextColor:               "white",
 		HideTopBar:                false,
 		HideHistoryPanel:          false,
 
@@ -228,6 +230,9 @@ func (c *Config) Validate() error {
 	}
 	if c.AITextTransparency < 0 || c.AITextTransparency > 1 {
 		return &ValidationError{Field: "aiTextTransparency", Message: "AI 文字透明度必须在 0-1 之间"}
+	}
+	if c.AITextColor != "white" && c.AITextColor != "black" {
+		return &ValidationError{Field: "aiTextColor", Message: "AI 文字颜色必须是 'white' 或 'black'"}
 	}
 	if c.RealtimeEnabled && c.STTEnabled {
 		return &ValidationError{Field: "realtimeEnabled", Message: "Qwen Realtime 与第三方 STT 不能同时启用"}

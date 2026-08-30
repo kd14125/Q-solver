@@ -46,35 +46,97 @@ func (d *testDelegate) EmitEvent(name string, data ...interface{}) {
 	d.mu.Unlock()
 }
 
-func TestAltLeftDispatchesOnceAsynchronously(t *testing.T) {
+func TestRepeatableShortcutTriggersOnRepeatedKeyDown(t *testing.T) {
 	m := NewManager()
-	m.ReplaceShortcuts(map[string]KeyBinding{"move_left": {ComboID: "37+164"}})
-	called := make(chan string, 2)
+	m.ReplaceShortcuts(map[string]KeyBinding{"move_down": {ComboID: "40+164"}})
+	called := make(chan string, 3)
 	m.OnTrigger = func(action string) { called <- action }
 
 	m.mu.Lock()
 	m.heldKeys[164] = true
-	m.heldKeys[37] = true
-	if !onKeysChanged(m) {
-		t.Fatal("Alt+Left should be consumed")
+	m.heldKeys[40] = true
+	for i := 0; i < 3; i++ {
+		if !onKeysChanged(m) {
+			t.Fatalf("repeated Alt+Down should remain consumed at trigger %d", i+1)
+		}
 	}
-	if !onKeysChanged(m) {
-		t.Fatal("repeated Alt+Left should remain consumed")
+	m.mu.Unlock()
+
+	for i := 0; i < 3; i++ {
+		select {
+		case action := <-called:
+			if action != "move_down" {
+				t.Fatalf("unexpected action at trigger %d: %s", i+1, action)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("Alt+Down callback %d was not dispatched", i+1)
+		}
+	}
+}
+
+func TestOneShotShortcutIgnoresRepeatedKeyDownUntilRelease(t *testing.T) {
+	m := NewManager()
+	m.ReplaceShortcuts(map[string]KeyBinding{"screenshot": {ComboID: "119"}})
+	called := make(chan string, 2)
+	m.OnTrigger = func(action string) { called <- action }
+
+	m.mu.Lock()
+	m.heldKeys[119] = true
+	for i := 0; i < 3; i++ {
+		if !onKeysChanged(m) {
+			t.Fatalf("repeated F8 should remain consumed at trigger %d", i+1)
+		}
 	}
 	m.mu.Unlock()
 
 	select {
 	case action := <-called:
-		if action != "move_left" {
+		if action != "screenshot" {
 			t.Fatalf("unexpected action: %s", action)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("Alt+Left callback was not dispatched")
+		t.Fatal("F8 callback was not dispatched")
 	}
 	select {
 	case action := <-called:
-		t.Fatalf("shortcut repeated unexpectedly: %s", action)
+		t.Fatalf("one-shot shortcut repeated unexpectedly: %s", action)
 	case <-time.After(30 * time.Millisecond):
+	}
+
+	m.mu.Lock()
+	releaseKeyLocked(m, 119)
+	m.heldKeys[119] = true
+	onKeysChanged(m)
+	m.mu.Unlock()
+
+	select {
+	case action := <-called:
+		if action != "screenshot" {
+			t.Fatalf("unexpected action after release: %s", action)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("F8 did not trigger again after release")
+	}
+}
+
+func TestOnlyContinuousControlsAreRepeatable(t *testing.T) {
+	repeatable := []string{
+		"move_up", "move_down", "move_left", "move_right",
+		"scroll_up", "scroll_down",
+	}
+	for _, action := range repeatable {
+		if !isRepeatableAction(action) {
+			t.Errorf("continuous action should repeat: %s", action)
+		}
+	}
+
+	oneShot := []string{
+		"screenshot", "send", "solve", "toggle_ui", "toggle", "clickthrough",
+	}
+	for _, action := range oneShot {
+		if isRepeatableAction(action) {
+			t.Errorf("one-shot action should not repeat: %s", action)
+		}
 	}
 }
 

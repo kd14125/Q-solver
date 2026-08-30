@@ -232,6 +232,29 @@
           </div>
 
           <div class="form-group">
+            <label>AI 回复字体颜色</label>
+            <div class="theme-options" role="radiogroup" aria-label="AI 回复字体颜色">
+              <button type="button" class="theme-option" :class="{ active: tempSettings.aiTextColor !== 'black' }"
+                role="radio" :aria-checked="tempSettings.aiTextColor !== 'black'" @click="tempSettings.aiTextColor = 'white'">
+                <span class="font-color-preview white-font-preview" aria-hidden="true">Aa</span>
+                <span class="theme-option-copy">
+                  <strong>白色字体</strong>
+                  <small>适合深色或透明背景</small>
+                </span>
+              </button>
+              <button type="button" class="theme-option" :class="{ active: tempSettings.aiTextColor === 'black' }"
+                role="radio" :aria-checked="tempSettings.aiTextColor === 'black'" @click="tempSettings.aiTextColor = 'black'">
+                <span class="font-color-preview black-font-preview" aria-hidden="true">Aa</span>
+                <span class="theme-option-copy">
+                  <strong>黑色字体</strong>
+                  <small>适合浅色或白色背景</small>
+                </span>
+              </button>
+            </div>
+            <p class="hint-text">选择后立即预览，正文、标题、列表和代码块会统一切换。</p>
+          </div>
+
+          <div class="form-group">
             <label for="ai-text-opacity">AI 回复文字透明度: <span>{{ Math.round(tempSettings.aiTextTransparency * 100) }}%</span></label>
             <input type="range" id="ai-text-opacity" min="0" max="0.95" step="0.05"
               v-model.number="tempSettings.aiTextTransparency" />
@@ -440,6 +463,21 @@ function onSTTToggle() {
 .dark-preview span { background: #94a3b8; }
 .light-preview { background: #f8fafc; }
 .light-preview span { background: #475569; }
+
+.font-color-preview {
+  flex: 0 0 48px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #64748b, #94a3b8);
+  box-shadow: inset 0 0 0 1px rgba(100, 116, 139, 0.18);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.white-font-preview { color: #ffffff; }
+.black-font-preview { color: #000000; }
 
 .theme-option-copy {
   min-width: 0;
