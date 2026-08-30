@@ -20,6 +20,7 @@ export function useShortcuts() {
   const shortcutActions = [
     { action: 'screenshot', label: '截图（可连续 1-3 张）', default: 'F8', macDefault: '⌘1' },
     { action: 'send', label: '发送截图并请求回答', default: 'F7', macDefault: '⌘2' },
+    { action: 'toggle_ui', label: '隐藏/显示界面内容', default: 'F6', macDefault: '⌘5' },
     { action: 'toggle', label: '隐藏/展示', default: 'F9', macDefault: '⌘3' },
     { action: 'clickthrough', label: '鼠标穿透', default: 'F10', macDefault: '⌘4' },
     { action: 'move_up', label: '向上移动', default: 'Alt+↑', macDefault: '⌘⌥↑' },

@@ -12,7 +12,7 @@
   <p>
     <a href="https://github.com/kd14125/Q-solver/stargazers"><img src="https://img.shields.io/github/stars/kd14125/Q-solver?color=ffcb6b&style=for-the-badge&labelColor=30363d" alt="Stars"></a>
     <a href="https://github.com/kd14125/Q-solver/releases"><img src="https://img.shields.io/github/v/release/kd14125/Q-solver?color=89d185&style=for-the-badge&labelColor=30363d" alt="Release"></a>
-    <img src="https://img.shields.io/badge/version-v1.2.0-10b981?style=for-the-badge&labelColor=30363d" alt="Version 1.2.0">
+    <img src="https://img.shields.io/badge/version-v1.3.0-10b981?style=for-the-badge&labelColor=30363d" alt="Version 1.3.0">
     <img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go&logoColor=white&labelColor=30363d" alt="Go">
     <img src="https://img.shields.io/badge/Vue-3.x-4FC08D?style=for-the-badge&logo=vue.js&logoColor=white&labelColor=30363d" alt="Vue">
     <img src="https://img.shields.io/badge/Wails-v2-E30613?style=for-the-badge&logo=wails&logoColor=white&labelColor=30363d" alt="Wails">
@@ -47,15 +47,17 @@
 
 <br>
 
-## 🆕 v1.2.0 更新内容
+## 🆕 v1.3.0 更新内容
 
-- **独立语音面试 API**：新增 Qwen3.5 Omni Realtime，语音配置与截图答题配置完全隔离。
-- **只监听电脑播放声音**：Windows 使用 WASAPI Loopback 捕获默认播放设备，不直接采集麦克风。
-- **自动判断提问结束**：使用 Semantic VAD，不再固定每 5 秒切段，面试官说完后自动生成简短、口语化回答。
-- **截图工作流升级**：`F8` 可连续截取 1–3 张图片，`F7` 合并发送并请求回答。
-- **界面增强**：窗口可自由缩放、可调整 AI 字体，代码块支持自动换行与行号。
-- **日夜双主题**：新增白天配色，可在设置中即时预览并持久化切换。
-- **稳定性修复**：修复方向移动快捷键引起的闪退，并加强音频、WebSocket 和协程生命周期管理。
+- **快捷键稳定性重构**：修复录制 F1、修改透明度或保存设置后 F7/F8/F9、Alt 方向键失效的问题，Windows Hook 现在拥有完整的启动、停止与重启生命周期。
+- **遗漏抬键自动恢复**：即使系统或第三方软件吞掉 `KEYUP`，也会在下一次按键前清理残留状态，不再把后续快捷键误判成组合键。
+- **透明界面升级**：顶部栏、历史栏、回答区、欢迎页和状态组件支持高透明/特别透明效果，AI 回答和代码块背景可完全透明。
+- **纯白回答样式**：AI 正文、标题、列表、行内代码、代码块和行号统一使用白色，移除绿色代码胶囊和语法高亮背景。
+- **可隐藏界面内容**：设置中可隐藏顶部工具栏和历史问题栏；新增 `F6` 总开关，同时隐藏欢迎页内容和加载提示，并可一键恢复。
+- **回答显示调节**：新增 AI 文字透明度滑块，修正透明度方向，并兼容迁移早期错误保存的数值。
+- **简洁截图反馈**：连续截图后右下角只显示 `1/3`、`2/3`、`3/3`，不再展示缩略图和操作框。
+- **移除等待动画**：发送问题后不再显示“深度思考中”圆环、计时器或追加回复动画。
+- **单实例与配置迁移**：避免同时启动多个 Q-Solver；配置固定保存到 `%APPDATA%/Q-Solver/config.json`，并自动迁移旧版配置。
 
 完整记录请查看 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -177,6 +179,7 @@ wails build -ldflags "-s -w" -tags prod
 |:---|:---:|
 | **截图（可连续 1–3 张）** 📸 | `F8` |
 | **发送截图并请求回答** 🤖 | `F7` |
+| **隐藏/显示界面内容** 🫥 | `F6` |
 | **显示/隐藏窗口** 👁️ | `F9` |
 | **切换鼠标穿透** 👻 | `F10` |
 | **微调窗口位置** ↕️ | `Alt + 方向键` |
@@ -190,7 +193,8 @@ wails build -ldflags "-s -w" -tags prod
 2. 在 **截图答题模型** 中配置 Provider、API Key、Base URL、模型和提示词。
 3. 如需语音面试辅助，在 **语音面试模型** 中单独配置 Qwen Realtime API Key、Workspace ID、模型和提示词。
 4. Qwen Realtime 与旧版第三方 STT 模式不能同时启用。
-5. 在 **常规设置** 中可切换日夜主题、调整透明度、AI 字体大小和代码块自动换行。
+5. 在 **常规设置** 中可切换日夜主题，调整窗口透明度、AI 文字透明度、AI 字体大小和代码块自动换行。
+6. 可分别隐藏顶部工具栏和历史问题栏，也可用默认快捷键 `F6` 一键隐藏或恢复界面内容。
 
 > [!IMPORTANT]
 > API Key 仅应填写在本机设置中。不要把 API Key 写入 README、截图、Issue 或提交到 Git 仓库。

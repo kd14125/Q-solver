@@ -191,7 +191,14 @@
 }
 
 .ai-response {
-    /* AI 回复正文样式（继承 markdown-body） */
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+}
+
+.loading-placeholder {
+    flex: 1;
+    background: transparent;
 }
 
 .main-interface {
@@ -1023,14 +1030,17 @@ input:checked+.slider:before {
   right: 18px;
   bottom: 18px;
   z-index: 30;
-  width: 250px;
-  padding: 10px;
-  border: 1px solid rgba(148, 163, 184, .35);
-  border-radius: 12px;
-  background: transparent;
-  box-shadow: 0 8px 30px rgba(15, 23, 42, .18);
-  backdrop-filter: blur(10px);
+  width: auto;
+  min-width: 34px;
+  padding: 4px 8px;
+  border: 1px solid rgba(148, 163, 184, .24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .025);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, .08);
+  backdrop-filter: blur(8px);
+  text-align: center;
 }
+.screenshot-count { color: var(--text-secondary); font: 600 11px/1 var(--font-mono); letter-spacing: .2px; }
 .screenshot-dock-head, .screenshot-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .screenshot-dock-head { margin-bottom: 8px; font-size: 12px; color: #475569; }
 .screenshot-clear { border: 0; background: transparent; color: #dc2626; cursor: pointer; font-size: 12px; }

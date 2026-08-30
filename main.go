@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -36,7 +37,17 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},
 		AlwaysOnTop:      true,
-		OnStartup:        app.Startup,
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "q-solver-kd14125-windows",
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx == nil {
+					return
+				}
+				wailsruntime.WindowUnminimise(app.ctx)
+				wailsruntime.WindowShow(app.ctx)
+			},
+		},
+		OnStartup: app.Startup,
 		Bind: []interface{}{
 			app,
 		},

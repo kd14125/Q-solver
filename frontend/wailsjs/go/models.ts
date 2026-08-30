@@ -7,7 +7,7 @@ export namespace config {
 	    baseURL?: string;
 	    prompt?: string;
 	    theme?: string;
-	    opacity?: number;
+	    opacity: number;
 	    noCompression?: boolean;
 	    compressionQuality?: number;
 	    sharpening?: number;
@@ -50,6 +50,9 @@ export namespace config {
 	    windowHeight?: number;
 	    aiFontSize?: number;
 	    codeWrap?: boolean;
+	    aiTextTransparency?: number;
+	    hideTopBar?: boolean;
+	    hideHistoryPanel?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -106,6 +109,9 @@ export namespace config {
 	        this.windowHeight = source["windowHeight"];
 	        this.aiFontSize = source["aiFontSize"];
 	        this.codeWrap = source["codeWrap"];
+	        this.aiTextTransparency = source["aiTextTransparency"];
+	        this.hideTopBar = source["hideTopBar"];
+	        this.hideHistoryPanel = source["hideHistoryPanel"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

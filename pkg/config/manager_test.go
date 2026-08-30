@@ -168,3 +168,113 @@ func TestCustomRealtimePromptAndParametersAreNotMigrated(t *testing.T) {
 		t.Fatalf("用户自定义语音配置被覆盖: %+v", got)
 	}
 }
+
+func TestConfigPathUsesStableUserConfigDirectory(t *testing.T) {
+	got := configPathFor(filepath.Join("C:", "Users", "tester", "AppData", "Roaming"))
+	want := filepath.Join("C:", "Users", "tester", "AppData", "Roaming", "Q-Solver", "config.json")
+	if got != want {
+		t.Fatalf("配置路径不稳定: got=%q want=%q", got, want)
+	}
+}
+
+func TestMigrateLegacyConfigCopiesValidJSONWithoutOverwriting(t *testing.T) {
+	dir := t.TempDir()
+	legacyPath := filepath.Join(dir, "legacy", "config.json")
+	targetPath := filepath.Join(dir, "stable", "config.json")
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	legacyData := []byte(`{"model":"legacy-model","shortcuts":{"toggle":{"vkCode":"120","keyName":"F9"}}}`)
+	if err := os.WriteFile(legacyPath, legacyData, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := migrateLegacyConfig(targetPath, []string{filepath.Join(dir, "missing.json"), legacyPath}); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(migrated) != string(legacyData) {
+		t.Fatalf("旧配置迁移内容改变: got=%s", migrated)
+	}
+
+	if err := os.WriteFile(targetPath, []byte(`{"model":"user-newer-model"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateLegacyConfig(targetPath, []string{legacyPath}); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(kept) != `{"model":"user-newer-model"}` {
+		t.Fatalf("已有稳定配置被覆盖: %s", kept)
+	}
+}
+
+func TestMigrateLegacyConfigSkipsInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	invalidPath := filepath.Join(dir, "invalid.json")
+	targetPath := filepath.Join(dir, "stable", "config.json")
+	if err := os.WriteFile(invalidPath, []byte("not-json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateLegacyConfig(targetPath, []string{invalidPath}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("无效旧配置不应迁移: %v", err)
+	}
+}
+
+func TestFullyTransparentOpacityPersists(t *testing.T) {
+	cm := NewConfigManager()
+	cm.configPath = filepath.Join(t.TempDir(), "config.json")
+	cm.legacyPaths = nil
+	cm.config.Opacity = 0
+	if err := cm.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(cm.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["opacity"]; !ok {
+		t.Fatal("opacity=0 被 omitempty 丢弃，透明度无法持久化")
+	}
+
+	reloaded := NewConfigManager()
+	reloaded.configPath = cm.configPath
+	reloaded.legacyPaths = nil
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Get().Opacity != 0 {
+		t.Fatalf("完全透明设置重新加载后改变: %v", reloaded.Get().Opacity)
+	}
+}
+
+func TestLegacyAITextOpacityMigratesAsUserVisibleTransparency(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"aiTextOpacity":0.95}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cm := NewConfigManager()
+	cm.configPath = configPath
+	cm.legacyPaths = nil
+	if err := cm.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if got := cm.Get().AITextTransparency; got != 0.95 {
+		t.Fatalf("旧版滑块值没有按透明度语义迁移: got=%v want=0.95", got)
+	}
+}

@@ -75,6 +75,7 @@
     --text-lg: 16px;
     --text-xl: 18px;
     --ai-font-size: 14px;
+    --ai-text-opacity: 1;
 
     /* Transitions */
     --transition-fast: 0.15s ease;
@@ -114,6 +115,98 @@
     --shadow-xl: 0 12px 48px rgba(15, 23, 42, 0.16);
     --scrollbar-thumb: rgba(15, 23, 42, 0.18);
     --scrollbar-thumb-hover: rgba(15, 23, 42, 0.3);
+}
+
+/* 高透明度模式：控件本身也降低底色，避免出现“外层透明、内部仍有一块深色背景”。
+   仅在用户把透明度调高时启用，正常模式保持原有对比度和可读性。 */
+:root[data-transparency="high"] #app,
+:root[data-transparency="ultra"] #app {
+    --bg-base: rgba(17, 24, 39, 0.14);
+    --bg-elevated: rgba(31, 41, 55, 0.18);
+    --bg-card: rgba(55, 65, 81, 0.10);
+    --bg-card-hover: rgba(75, 85, 99, 0.16);
+    --bg-input: rgba(0, 0, 0, 0.10);
+    --border-subtle: rgba(255, 255, 255, 0.12);
+    --border-default: rgba(255, 255, 255, 0.18);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+:root[data-transparency="ultra"] #app {
+    --bg-base: rgba(17, 24, 39, 0.06);
+    --bg-elevated: rgba(31, 41, 55, 0.08);
+    --bg-card: rgba(55, 65, 81, 0.045);
+    --bg-card-hover: rgba(75, 85, 99, 0.09);
+    --bg-input: rgba(0, 0, 0, 0.06);
+    --border-subtle: rgba(255, 255, 255, 0.10);
+    --border-default: rgba(255, 255, 255, 0.15);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.04);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.07);
+}
+
+:root[data-transparency="high"] .top-bar,
+:root[data-transparency="ultra"] .top-bar,
+:root[data-transparency="high"] .right-panel,
+:root[data-transparency="ultra"] .right-panel,
+:root[data-transparency="high"] .history-item,
+:root[data-transparency="ultra"] .history-item,
+:root[data-transparency="high"] .status-group,
+:root[data-transparency="ultra"] .status-group,
+:root[data-transparency="high"] .status-panel,
+:root[data-transparency="ultra"] .status-panel,
+:root[data-transparency="high"] .screenshot-dock,
+:root[data-transparency="ultra"] .screenshot-dock {
+    background-color: rgba(31, 41, 55, 0.10);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+}
+
+:root[data-transparency="ultra"] .top-bar,
+:root[data-transparency="ultra"] .right-panel,
+:root[data-transparency="ultra"] .history-item,
+:root[data-transparency="ultra"] .status-group,
+:root[data-transparency="ultra"] .status-panel,
+:root[data-transparency="ultra"] .screenshot-dock {
+    background-color: rgba(31, 41, 55, 0.045);
+    border-color: rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(8px);
+}
+
+:root[data-transparency="high"] .action-card,
+:root[data-transparency="ultra"] .action-card,
+:root[data-transparency="high"] .status-loading,
+:root[data-transparency="ultra"] .status-loading,
+:root[data-transparency="high"] .status-success,
+:root[data-transparency="ultra"] .status-success {
+    background-color: rgba(255, 255, 255, 0.045);
+    border-color: rgba(255, 255, 255, 0.10);
+}
+
+:root[data-transparency="ultra"] .action-card,
+:root[data-transparency="ultra"] .status-loading,
+:root[data-transparency="ultra"] .status-success {
+    background-color: rgba(255, 255, 255, 0.018);
+    border-color: rgba(255, 255, 255, 0.07);
+}
+
+:root[data-theme="light"][data-transparency="high"] #app,
+:root[data-theme="light"][data-transparency="ultra"] #app {
+    --bg-base: rgba(248, 250, 252, 0.10);
+    --bg-elevated: rgba(255, 255, 255, 0.18);
+    --bg-card: rgba(226, 232, 240, 0.10);
+    --bg-card-hover: rgba(203, 213, 225, 0.16);
+    --bg-input: rgba(255, 255, 255, 0.12);
+    --border-subtle: rgba(15, 23, 42, 0.10);
+    --border-default: rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme="light"][data-transparency="ultra"] #app {
+    --bg-base: rgba(248, 250, 252, 0.04);
+    --bg-elevated: rgba(255, 255, 255, 0.08);
+    --bg-card: rgba(226, 232, 240, 0.045);
+    --bg-card-hover: rgba(203, 213, 225, 0.09);
+    --bg-input: rgba(255, 255, 255, 0.06);
+    --border-subtle: rgba(15, 23, 42, 0.07);
+    --border-default: rgba(15, 23, 42, 0.11);
 }
 
 /* ========================================
@@ -607,6 +700,7 @@ body {
     line-height: 1.7;
     color: var(--text-primary);
     font-weight: 400;
+    opacity: var(--ai-text-opacity);
     scrollbar-width: thin;
     scrollbar-color: var(--border-default) transparent;
     padding-right: var(--space-2);
@@ -738,6 +832,54 @@ body {
     font-size: 0.9em;
     border: 1px solid rgba(16, 185, 129, 0.2);
     font-weight: 500;
+}
+
+/* AI 回答采用纯白文字和完全透明背景。这里使用 !important 覆盖 marked、
+   highlight.js 及行内语法高亮可能写入的颜色和背景。 */
+.right-panel,
+.markdown-body .ai-response,
+.markdown-body .ai-response :is(div, p, span, strong, em, ul, ol, li, h1, h2, h3, h4, pre, code, table, thead, tbody, tr, th, td, blockquote) {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+.right-panel {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+.markdown-body .ai-response,
+.markdown-body .ai-response :is(p, span, strong, em, li, h1, h2, h3, h4, code, th, td, blockquote, a),
+.markdown-body .ai-response .code-line-number,
+.markdown-body .ai-response .code-line-text {
+    color: #ffffff !important;
+}
+
+.markdown-body .ai-response li::marker {
+    color: #ffffff !important;
+}
+
+.markdown-body .ai-response pre,
+.markdown-body .ai-response code,
+.markdown-body .ai-response code:not(pre code),
+.markdown-body .ai-response .code-line,
+.markdown-body .ai-response .code-lines {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.markdown-body .ai-response pre::before {
+    display: none !important;
+    content: none !important;
+    background: transparent !important;
+    border: 0 !important;
 }
 
 /* Blockquotes */

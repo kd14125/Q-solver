@@ -30,7 +30,8 @@ func NewService(delegate ServiceDelegate, initialShortcuts map[string]KeyBinding
 	// 自注册配置变更回调
 	subscribe(func(shortcuts map[string]KeyBinding) {
 		s.manager.ReplaceShortcuts(shortcuts)
-		logger.Println("快捷键配置已更新")
+		s.manager.Restart()
+		logger.Println("快捷键配置已更新，Hook 已重启")
 	})
 
 	return s
@@ -46,10 +47,6 @@ func (s *Service) Stop() {
 
 func (s *Service) GetShortcuts() map[string]KeyBinding {
 	return s.manager.GetShortcuts()
-}
-
-func (s *Service) SetShortcuts(shortcuts map[string]KeyBinding) {
-	s.manager.ReplaceShortcuts(shortcuts)
 }
 
 func (s *Service) StartRecording(action string) {
@@ -73,6 +70,9 @@ func (s *Service) handleTrigger(action string) {
 	case "send":
 		logger.Println("发送截图并请求回答")
 		s.delegate.TriggerSend()
+	case "toggle_ui":
+		logger.Println("切换界面内容显示状态")
+		s.delegate.EmitEvent("toggle-ui-content")
 	case "solve":
 		logger.Println("触发解题")
 		// 兼容旧配置：旧版 solve 快捷键等价于发送截图。
@@ -104,11 +104,7 @@ func (s *Service) handleRecord(action string, keyName string, comboID string) {
 		"keyName": keyName,
 		"comboID": comboID,
 	})
-	logger.Printf("快捷键录制完成: %s -> %s->%s\n", action, keyName, comboID)
-	s.manager.SetShortcut(action, KeyBinding{
-		ComboID: comboID,
-		KeyName: keyName,
-	})
+	logger.Printf("快捷键录制预览: %s -> %s->%s\n", action, keyName, comboID)
 }
 
 func (s *Service) handleRecordingComplete(action string, keyName string, comboID string) {
@@ -130,4 +126,8 @@ func (s *Service) handleRecordingComplete(action string, keyName string, comboID
 		s.manager.StartRecording(action)
 		return
 	}
+
+	// 这里只确认录制结束并通知前端。新按键保留在 tempShortcuts 中，只有用户
+	// 点击“保存”后才通过配置订阅替换生效快捷键，取消设置不会污染运行状态。
+	s.delegate.EmitEvent("shortcut-saved", action)
 }

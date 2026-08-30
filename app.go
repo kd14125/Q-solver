@@ -275,17 +275,17 @@ func (a *App) RemoveFocus() {
 
 // ==================== 解题相关 ====================
 
+// screenshotAPIAvailable 只检查截图答题自己的配置。语音面试 API 与截图
+// API 完全独立，开启实时语音时仍允许截图和发送。
+func screenshotAPIAvailable(cfg config.Config) bool {
+	return cfg.APIKey != ""
+}
+
 // TriggerSolve 触发解题（快捷键调用）
 func (a *App) TriggerSolve() {
 	cfg := a.configManager.Get()
 
-	// Live 模式下禁用手动截图
-	if cfg.UseLiveApi {
-		a.EmitEvent("toast", "当前模式不支持手动截图")
-		return
-	}
-
-	if cfg.APIKey == "" {
+	if !screenshotAPIAvailable(cfg) {
 		a.EmitEvent("require-login")
 		return
 	}
@@ -298,11 +298,7 @@ const maxScreenshots = 3
 // TriggerScreenshot 截取并缓存一张图片。
 func (a *App) TriggerScreenshot() {
 	cfg := a.configManager.Get()
-	if cfg.UseLiveApi {
-		a.EmitEvent("toast", "当前模式不支持手动截图")
-		return
-	}
-	if cfg.APIKey == "" {
+	if !screenshotAPIAvailable(cfg) {
 		a.EmitEvent("require-login")
 		return
 	}
@@ -363,11 +359,7 @@ func (a *App) ClearScreenshots() {
 // TriggerSend 发送缓存截图；无缓存时自动截图后发送。
 func (a *App) TriggerSend() {
 	cfg := a.configManager.Get()
-	if cfg.UseLiveApi {
-		a.EmitEvent("toast", "当前模式不支持手动截图")
-		return
-	}
-	if cfg.APIKey == "" {
+	if !screenshotAPIAvailable(cfg) {
 		a.EmitEvent("require-login")
 		return
 	}

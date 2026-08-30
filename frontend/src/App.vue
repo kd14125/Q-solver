@@ -1,35 +1,22 @@
 <template>
-  <TopBar :shortcuts="shortcuts" :activeButtons="activeButtons" :isClickThrough="isClickThrough"
+  <TopBar v-if="!settings.hideTopBar" :shortcuts="shortcuts" :activeButtons="activeButtons" :isClickThrough="isClickThrough"
     :statusIcon="statusIcon" :statusText="statusText" :settings="settings" :isStealthMode="isStealthMode"
     :isMacOS="isMacOS"
     @openSettings="openSettings" @quit="quit" />
 
   <!-- 发布版兼容：手动截图缓存面板（最多 3 张） -->
   <div v-if="!settings.useLiveApi && pendingScreenshots.length > 0" class="screenshot-dock">
-    <div class="screenshot-dock-head">
-      <span>截图 {{ pendingScreenshots.length }}/3</span>
-      <button v-if="pendingScreenshots.length" class="screenshot-clear" @click="clearPendingScreenshots">清空</button>
-    </div>
-    <div v-if="pendingScreenshots.length" class="screenshot-thumbs">
-      <div v-for="(shot, idx) in pendingScreenshots" :key="idx" class="screenshot-thumb">
-        <img :src="shot" :alt="`截图 ${idx + 1}`" />
-        <button @click="removePendingScreenshot(idx)" :aria-label="`删除截图 ${idx + 1}`">×</button>
-      </div>
-    </div>
-    <div class="screenshot-actions">
-      <button @click="takeScreenshot" :disabled="pendingScreenshots.length >= 3 || isLoading">截图</button>
-      <button class="primary" @click="sendScreenshots" :disabled="isLoading">发送</button>
-    </div>
+    <span class="screenshot-count" aria-live="polite">{{ pendingScreenshots.length }}/3</span>
   </div>
 
   <!-- Live API 模式优先 -->
   <LiveView v-if="settings.useLiveApi" />
 
-  <WelcomeView v-else-if="!hasStarted || history.length === 0" :solveShortcut="solveShortcut"
+  <WelcomeView v-else-if="!hasStarted || history.length === 0" :hideContent="settings.hideTopBar" :solveShortcut="solveShortcut"
     :toggleShortcut="shortcuts.toggle?.keyName || 'Alt+H'" :initStatus="initStatus" />
 
   <div v-else id="main-interface" class="main-interface" :class="{ visible: mainVisible }">
-    <div class="left-panel" id="history-list">
+    <div v-if="!settings.hideHistoryPanel" class="left-panel" id="history-list">
       <div v-if="history.length === 0" class="history-empty">
         <span class="empty-icon">📝</span>
         <span class="empty-text">暂无记录</span>
@@ -42,7 +29,7 @@
     <div class="right-panel">
       <EmptyState v-if="history.length === 0 && !isLoading && !errorState.show" :shortcut="solveShortcut" />
       <ErrorView v-else-if="errorState.show" :errorState="errorState" :solveShortcut="solveShortcut" />
-      <LoadingView v-else-if="isLoading" />
+      <div v-else-if="isLoading" class="loading-placeholder" aria-hidden="true"></div>
       <div v-else id="content" class="markdown-body">
         <template v-for="(round, idx) in currentRounds" :key="idx">
           <div class="chat-round">
@@ -68,24 +55,6 @@
           </div>
           <hr v-if="idx < currentRounds.length - 1" class="round-divider" />
         </template>
-        <!-- 思维中状态 -->
-        <div v-if="isThinking" class="thinking-loading">
-          <div class="thinking-indicator">
-            <span class="pulse-dot"></span>
-            <span class="text">正在思考中...</span>
-            <span class="thinking-timer">{{ formatDuration(thinkingTimer) }}</span>
-          </div>
-        </div>
-        <!-- 追加加载状态 -->
-        <div v-if="isAppending && !isThinking" class="append-loading">
-          <div class="ai-icon">
-            <div class="ai-icon-inner"></div>
-          </div>
-          <span class="text">AI 正在回复</span>
-          <div class="wave-dots">
-            <span></span><span></span><span></span>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -136,7 +105,6 @@ import { reactive, ref, onMounted, watch, nextTick, computed } from 'vue'
 import SettingsModal from './components/SettingsModal.vue'
 import WelcomeView from './components/WelcomeView.vue'
 import ErrorView from './components/ErrorView.vue'
-import LoadingView from './components/LoadingView.vue'
 import TopBar from './components/TopBar.vue'
 import HistoryItem from './components/HistoryItem.vue'
 import EmptyState from './components/EmptyState.vue'
@@ -319,8 +287,17 @@ settingsCallbacks.resetStatus = resetStatus
 settingsCallbacks.showToast = showToast
 
 settingsCallbacks.closeSettings = closeSettings
+settingsCallbacks.beforeSave = async () => {
+  await StopRecordingKey()
+  recordingAction.value = null
+  recordingText.value = ''
+}
 
-function openSettings() {
+async function openSettings() {
+  // 防御性清理上一次未完成的录制，保证仅打开设置不会吞掉全局快捷键。
+  await StopRecordingKey()
+  recordingAction.value = null
+  recordingText.value = ''
   RestoreFocus()
   // 初始化临时设置
   initSettings()
@@ -342,12 +319,11 @@ function openSettings() {
   uiState.showSettings = true
 }
 
-function closeSettings() {
+async function closeSettings() {
   RemoveFocus()
   uiState.showSettings = false
-  if (recordingAction.value) {
-    StopRecordingKey()
-  }
+  // 前后端状态可能因窗口关闭或异步事件不同步，因此始终停止录制。
+  await StopRecordingKey()
   recordingAction.value = null
   recordingText.value = ''
   // 恢复所有临时设置到原值（包括透明度）
@@ -477,6 +453,13 @@ onMounted(() => {
     } else {
       showToast('隐身模式已关闭 (录屏可见)', 'success')
     }
+  })
+
+  EventsOn('toggle-ui-content', () => {
+    const nextHidden = !(settings.hideTopBar && settings.hideHistoryPanel)
+    settings.hideTopBar = nextHidden
+    settings.hideHistoryPanel = nextHidden
+    showToast(nextHidden ? '界面内容已隐藏，可用 F6 恢复' : '界面内容已显示', 'info')
   })
 
   EventsOn('solution', (data) => {

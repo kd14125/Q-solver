@@ -20,16 +20,19 @@ var (
 	procRegisterHotKey             = user32.NewProc("RegisterHotKey")
 	procUnregisterHotKey           = user32.NewProc("UnregisterHotKey")
 	procGetMessageW                = user32.NewProc("GetMessageW")
+	procPostThreadMessageW         = user32.NewProc("PostThreadMessageW")
 	procSetWindowsHookExW          = user32.NewProc("SetWindowsHookExW")
 	procUnhookWindowsHookEx        = user32.NewProc("UnhookWindowsHookEx")
 	procCallNextHookEx             = user32.NewProc("CallNextHookEx")
 	procGetModuleHandleW           = kernel32.NewProc("GetModuleHandleW")
+	procGetCurrentThreadId         = kernel32.NewProc("GetCurrentThreadId")
 	procSetWindowPos               = user32.NewProc("SetWindowPos")
 	procSetLayeredWindowAttributes = user32.NewProc("SetLayeredWindowAttributes")
 	procGetAsyncKeyState           = user32.NewProc("GetAsyncKeyState")
 	procEnumWindows                = user32.NewProc("EnumWindows")
 	procGetWindowThreadProcessId   = user32.NewProc("GetWindowThreadProcessId")
 	procKeybdEvent                 = user32.NewProc("keybd_event")
+	procSendInput                  = user32.NewProc("SendInput")
 )
 
 // WindowHandle 窗口句柄类型（Windows 为 HWND）
@@ -78,6 +81,7 @@ const (
 	VK_CONTROL  = 0x11
 	VK_MENU     = 0x12 // Alt
 	WM_HOTKEY   = 0x0312
+	WM_QUIT     = 0x0012
 
 	WH_KEYBOARD_LL = 13
 	WH_MOUSE_LL    = 14 // 添加鼠标钩子ID
@@ -262,6 +266,23 @@ func GetMessage(msg *MSG, hwnd uintptr, msgFilterMin, msgFilterMax uint32) int32
 		uintptr(msgFilterMax),
 	)
 	return int32(ret)
+}
+
+// GetCurrentThreadID 返回当前 Windows 系统线程 ID。
+func GetCurrentThreadID() uint32 {
+	ret, _, _ := procGetCurrentThreadId.Call()
+	return uint32(ret)
+}
+
+// PostThreadMessage 向指定线程的消息队列投递消息。
+func PostThreadMessage(threadID uint32, message uint32, wParam, lParam uintptr) bool {
+	ret, _, _ := procPostThreadMessageW.Call(
+		uintptr(threadID),
+		uintptr(message),
+		wParam,
+		lParam,
+	)
+	return ret != 0
 }
 
 // SetWindowsHookEx 安装钩子
@@ -497,4 +518,41 @@ func KeybdEvent(bVk byte, bScan byte, dwFlags uint32, dwExtraInfo uintptr) {
 		uintptr(dwFlags),
 		dwExtraInfo,
 	)
+}
+
+type keyboardInput struct {
+	VirtualKey uint16
+	ScanCode   uint16
+	Flags      uint32
+	Time       uint32
+	ExtraInfo  uintptr
+	Unused     [8]byte
+}
+
+type keyboardInputEvent struct {
+	Type uint32
+	Data keyboardInput
+}
+
+// SendKeyboardInput 使用 Windows 推荐的 SendInput 注入一个键盘事件。
+// 相比已废弃的 keybd_event，它在自动化回归测试和新版 Windows 上更稳定。
+func SendKeyboardInput(virtualKey uint16, keyUp bool) bool {
+	const (
+		inputKeyboard = 1
+		keyEventKeyUp = 0x0002
+	)
+	flags := uint32(0)
+	if keyUp {
+		flags = keyEventKeyUp
+	}
+	input := keyboardInputEvent{
+		Type: inputKeyboard,
+		Data: keyboardInput{VirtualKey: virtualKey, Flags: flags},
+	}
+	ret, _, _ := procSendInput.Call(
+		1,
+		uintptr(unsafe.Pointer(&input)),
+		unsafe.Sizeof(input),
+	)
+	return ret == 1
 }

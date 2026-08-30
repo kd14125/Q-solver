@@ -7,19 +7,19 @@
     <!-- 主内容 -->
     <div class="welcome-content">
       <!-- Logo 区域 -->
-      <div class="logo-section">
+      <div v-if="!hideContent" class="logo-section">
         <div class="logo-ring"></div>
         <div class="logo-icon">Q</div>
       </div>
 
       <!-- 标题区域 -->
-      <div class="title-section">
+      <div v-if="!hideContent" class="title-section">
         <h1 class="main-title">Q-SOLVER</h1>
         <p class="subtitle">智能答题助手 · 即刻开始</p>
       </div>
 
       <!-- 状态区域 -->
-      <Transition name="fade-slide" mode="out-in">
+      <Transition v-if="!hideContent" name="fade-slide" mode="out-in">
         <!-- 加载状态 -->
         <div v-if="initStatus !== 'ready'" class="status-loading" key="loading">
           <div class="loading-spinner"></div>
@@ -60,7 +60,7 @@
       </Transition>
 
       <!-- 底部提示 -->
-      <div v-if="initStatus === 'ready' && !showSuccess" class="bottom-hint">
+      <div v-if="!hideContent && initStatus === 'ready' && !showSuccess" class="bottom-hint">
         按快捷键开始使用
       </div>
     </div>
@@ -73,6 +73,7 @@ import { ref, watch } from 'vue'
 const props = defineProps({
   solveShortcut: { type: String, default: 'F8' },
   toggleShortcut: { type: String, default: 'Alt+H' },
+  hideContent: { type: Boolean, default: false },
   initStatus: { type: String, default: 'ready' }
 })
 

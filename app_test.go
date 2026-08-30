@@ -41,3 +41,24 @@ func TestScreenshotSettingsStillReconnectGeminiLiveSession(t *testing.T) {
 		t.Fatal("原 Gemini Live 模式应继续响应截图模型配置变化")
 	}
 }
+
+func TestScreenshotAPIStaysAvailableDuringRealtimeInterview(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.APIKey = "screenshot-key"
+	cfg.UseLiveApi = true
+	cfg.RealtimeEnabled = true
+
+	if !screenshotAPIAvailable(cfg) {
+		t.Fatal("开启 Qwen Realtime 时不应禁用独立的截图答题 API")
+	}
+}
+
+func TestScreenshotAPIStillRequiresItsOwnKey(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.UseLiveApi = true
+	cfg.RealtimeEnabled = true
+
+	if screenshotAPIAvailable(cfg) {
+		t.Fatal("截图答题 API 未配置自己的 API Key 时不应可用")
+	}
+}

@@ -21,6 +21,11 @@ const DEFAULT_REALTIME_PROMPT = `你是候选人的实时面试回答助手。�
  * 配置完全由后端管理，前端只负责展示和临时编辑
  */
 export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
+  function replaceObject(target, source) {
+    Object.keys(target).forEach(key => delete target[key])
+    Object.assign(target, JSON.parse(JSON.stringify(source || {})))
+  }
+
   // 当前生效的配置（从后端同步）
   const settings = reactive({
     apiKey: '',
@@ -70,6 +75,9 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     thinkingBudget: 16000,
     aiFontSize: 14,
     codeWrap: false,
+    aiTextTransparency: 0,
+    hideTopBar: false,
+    hideHistoryPanel: false,
     windowWidth: 0,
     windowHeight: 0,
   })
@@ -87,20 +95,30 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
 
   function applyTheme(theme, transparency) {
     const normalizedTheme = theme === 'light' ? 'light' : 'dark'
-    const opacity = 1.0 - transparency
+    const normalizedTransparency = Math.min(1, Math.max(0, Number(transparency) || 0))
+    const opacity = 1.0 - normalizedTransparency
     const baseRGB = normalizedTheme === 'light' ? '248, 250, 252' : '17, 24, 39'
 
     document.documentElement.dataset.theme = normalizedTheme
+    document.documentElement.dataset.transparency = normalizedTransparency >= 0.6 ? 'ultra' : normalizedTransparency >= 0.3 ? 'high' : 'normal'
     const app = document.getElementById('app')
     if (app) {
       app.style.backgroundColor = `rgba(${baseRGB}, ${opacity})`
     }
   }
 
+  function applyAITextTransparency(value) {
+    const transparency = Math.min(0.95, Math.max(0, Number(value) || 0))
+    const opacity = 1 - transparency
+    document.documentElement.style.setProperty('--ai-text-opacity', String(opacity))
+  }
+
   // 设置面板中切换主题或透明度时即时预览，保存前不通知后端。
   watch(() => [tempSettings.theme, tempSettings.transparency], ([theme, transparency]) => {
     applyTheme(theme, transparency)
   })
+
+  watch(() => tempSettings.aiTextTransparency, applyAITextTransparency, { immediate: true })
 
   // 监听 API Key 变化（只有真正变化时才重置状态）
   let lastApiKey = ''
@@ -126,7 +144,7 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
 
       // 同步快捷键
       if (backendConfig.shortcuts) {
-        Object.assign(shortcuts, backendConfig.shortcuts)
+        replaceObject(shortcuts, backendConfig.shortcuts)
       }
 
       // 如果有 API Key，标记为已验证
@@ -190,6 +208,9 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     settings.thinkingBudget = config.thinkingBudget !== undefined ? config.thinkingBudget : 16000
     settings.aiFontSize = Math.min(32, Math.max(10, Number(config.aiFontSize) || 14))
     settings.codeWrap = config.codeWrap === true
+    settings.aiTextTransparency = Math.min(0.95, Math.max(0, Number(config.aiTextTransparency) || 0))
+    settings.hideTopBar = config.hideTopBar === true
+    settings.hideHistoryPanel = config.hideHistoryPanel === true
     settings.windowWidth = Number(config.windowWidth) || 0
     settings.windowHeight = Number(config.windowHeight) || 0
 
@@ -199,6 +220,7 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
     settings.transparency = 1.0 - opacity
 
     applyTheme(settings.theme, settings.transparency)
+    applyAITextTransparency(settings.aiTextTransparency)
 
     // 同步到 tempSettings，确保设置面板显示正确的值
     Object.assign(tempSettings, JSON.parse(JSON.stringify(settings)))
@@ -346,8 +368,9 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
    */
   async function saveSettings() {
     try {
-      // 同步快捷键
-      Object.assign(shortcuts, JSON.parse(JSON.stringify(tempShortcuts)))
+      // 无论前端录制状态是否同步，都先让后端退出录制模式，避免保存设置后
+      // 继续吞掉 F7/F8/F9 等全局快捷键。
+      if (callbacks.beforeSave) await callbacks.beforeSave()
 
       // 构建要保存的配置
       const configToSave = {
@@ -397,6 +420,9 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
         thinkingBudget: tempSettings.thinkingBudget,
         aiFontSize: tempSettings.aiFontSize,
         codeWrap: tempSettings.codeWrap,
+        aiTextTransparency: Math.min(0.95, Math.max(0, Number(tempSettings.aiTextTransparency) || 0)),
+        hideTopBar: tempSettings.hideTopBar === true,
+        hideHistoryPanel: tempSettings.hideHistoryPanel === true,
         windowWidth: settings.windowWidth || 0,
         windowHeight: settings.windowHeight || 0,
         shortcuts: tempShortcuts
@@ -411,9 +437,10 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
         if (callbacks.showToast) callbacks.showToast('设置已保存', 'success')
         // 更新本地状态
         Object.assign(settings, tempSettings)
+        replaceObject(shortcuts, tempShortcuts)
         if (callbacks.resetStatus) callbacks.resetStatus()
 
-        if (callbacks.closeSettings) callbacks.closeSettings()
+        if (callbacks.closeSettings) await callbacks.closeSettings()
       }
     } catch (e) {
       console.error('保存设置失败', e)
@@ -437,7 +464,7 @@ export function useSettings(shortcuts, tempShortcuts, uiState, callbacks) {
   function openSettings() {
     // 复制配置到临时变量
     Object.assign(tempSettings, JSON.parse(JSON.stringify(settings)))
-    Object.assign(tempShortcuts, JSON.parse(JSON.stringify(shortcuts)))
+    replaceObject(tempShortcuts, shortcuts)
 
     // 更新 lastApiKey 避免触发 watch
     lastApiKey = settings.apiKey

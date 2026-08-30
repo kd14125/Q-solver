@@ -232,6 +232,39 @@
           </div>
 
           <div class="form-group">
+            <label for="ai-text-opacity">AI 回复文字透明度: <span>{{ Math.round(tempSettings.aiTextTransparency * 100) }}%</span></label>
+            <input type="range" id="ai-text-opacity" min="0" max="0.95" step="0.05"
+              v-model.number="tempSettings.aiTextTransparency" />
+            <p class="hint-text">只调整回答正文、标题和代码文字的透明度，不影响窗口背景。</p>
+          </div>
+
+          <div class="form-group">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-title">隐藏顶部工具栏</span>
+                <span class="setting-desc">隐藏快捷键提示、设置、状态和退出按钮，需要使用快捷键操作。</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" v-model="tempSettings.hideTopBar">
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-title">隐藏历史问题栏</span>
+                <span class="setting-desc">隐藏左侧历史问题列表，让回答区域占满窗口。</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" v-model="tempSettings.hideHistoryPanel">
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
             <div class="setting-row">
               <div class="setting-info">
                 <span class="setting-title">代码块自动换行</span>

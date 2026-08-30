@@ -13,7 +13,7 @@ type Config struct {
 	BaseURL            string                         `json:"baseURL,omitempty"`
 	Prompt             string                         `json:"prompt,omitempty"`
 	Theme              string                         `json:"theme,omitempty"`
-	Opacity            float64                        `json:"opacity,omitempty"`
+	Opacity            float64                        `json:"opacity"`
 	NoCompression      bool                           `json:"noCompression,omitempty"`
 	CompressionQuality int                            `json:"compressionQuality,omitempty"`
 	Sharpening         float64                        `json:"sharpening,omitempty"`
@@ -65,10 +65,13 @@ type Config struct {
 	RealtimeSilenceDurationMs int     `json:"realtimeSilenceDurationMs"`
 
 	// 窗口尺寸
-	WindowWidth  int  `json:"windowWidth,omitempty"`
-	WindowHeight int  `json:"windowHeight,omitempty"`
-	AIFontSize   int  `json:"aiFontSize,omitempty"`
-	CodeWrap     bool `json:"codeWrap,omitempty"`
+	WindowWidth        int     `json:"windowWidth,omitempty"`
+	WindowHeight       int     `json:"windowHeight,omitempty"`
+	AIFontSize         int     `json:"aiFontSize,omitempty"`
+	CodeWrap           bool    `json:"codeWrap,omitempty"`
+	AITextTransparency float64 `json:"aiTextTransparency,omitempty"`
+	HideTopBar         bool    `json:"hideTopBar,omitempty"`
+	HideHistoryPanel   bool    `json:"hideHistoryPanel,omitempty"`
 }
 
 const DefaultModel = "gemini-2.5-flash"
@@ -157,6 +160,9 @@ func NewDefaultConfig() Config {
 		RealtimeVADType:           "semantic_vad",
 		RealtimeVADThreshold:      0.5,
 		RealtimeSilenceDurationMs: 800,
+		AITextTransparency:        0,
+		HideTopBar:                false,
+		HideHistoryPanel:          false,
 
 		// 窗口尺寸默认值
 		WindowWidth:  0,
@@ -187,6 +193,7 @@ func getDefaultShortcuts() map[string]shortcut.KeyBinding {
 	return map[string]shortcut.KeyBinding{
 		"screenshot":   {ComboID: "119", KeyName: "F8"},
 		"send":         {ComboID: "118", KeyName: "F7"},
+		"toggle_ui":    {ComboID: "117", KeyName: "F6"},
 		"toggle":       {ComboID: "120", KeyName: "F9"},
 		"clickthrough": {ComboID: "121", KeyName: "F10"},
 		"move_up":      {ComboID: "38+164", KeyName: "Alt+↑"},
@@ -218,6 +225,9 @@ func (c *Config) Validate() error {
 	}
 	if c.AIFontSize < 10 || c.AIFontSize > 32 {
 		return &ValidationError{Field: "aiFontSize", Message: "AI 字体大小必须在 10-32 之间"}
+	}
+	if c.AITextTransparency < 0 || c.AITextTransparency > 1 {
+		return &ValidationError{Field: "aiTextTransparency", Message: "AI 文字透明度必须在 0-1 之间"}
 	}
 	if c.RealtimeEnabled && c.STTEnabled {
 		return &ValidationError{Field: "realtimeEnabled", Message: "Qwen Realtime 与第三方 STT 不能同时启用"}

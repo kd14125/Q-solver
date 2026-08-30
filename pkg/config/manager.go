@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 )
 
@@ -15,6 +14,7 @@ type ConfigManager struct {
 	config      Config
 	mu          sync.RWMutex
 	configPath  string
+	legacyPaths []string
 	oldConfig   Config // 这是老配置
 	subscribers []func(NewConfig Config, oldConfig Config)
 }
@@ -26,33 +26,76 @@ func NewConfigManager() *ConfigManager {
 		subscribers: make([]func(NewConfig Config, oldConfig Config), 0),
 	}
 	cm.configPath = cm.getConfigPath()
+	cm.legacyPaths = cm.getLegacyConfigPaths()
 	return cm
 }
 
 func (cm *ConfigManager) getConfigPath() string {
-	var appDir string
-
-	// 判断操作系统
-	if runtime.GOOS == "windows" {
-		appDir = filepath.Join(".", "config")
-	} else {
-		sysConfigDir, err := os.UserConfigDir()
-		if err != nil {
-			sysConfigDir = "."
-		}
-		appDir = filepath.Join(sysConfigDir, "Q-Solver")
+	sysConfigDir, err := os.UserConfigDir()
+	if err != nil || sysConfigDir == "" {
+		sysConfigDir = "."
 	}
+	fullPath := configPathFor(sysConfigDir)
 
-	if err := os.MkdirAll(appDir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0700); err != nil {
 	}
-	fullPath := filepath.Join(appDir, "config.json")
-
 	return fullPath
+}
+
+func configPathFor(userConfigDir string) string {
+	return filepath.Join(userConfigDir, "Q-Solver", "config.json")
+}
+
+func (cm *ConfigManager) getLegacyConfigPaths() []string {
+	paths := make([]string, 0, 2)
+	if executablePath, err := os.Executable(); err == nil {
+		paths = append(paths, filepath.Join(filepath.Dir(executablePath), "config", "config.json"))
+	}
+	if workingDir, err := os.Getwd(); err == nil {
+		paths = append(paths, filepath.Join(workingDir, "config", "config.json"))
+	}
+	return paths
+}
+
+// migrateLegacyConfig 将旧版位于工作目录或 EXE 旁边的配置迁移到稳定的
+// 用户配置目录。目标文件一旦存在就绝不覆盖，避免升级时丢失用户设置。
+func migrateLegacyConfig(targetPath string, candidates []string) error {
+	if _, err := os.Stat(targetPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	cleanTarget := filepath.Clean(targetPath)
+	for _, candidate := range candidates {
+		cleanCandidate := filepath.Clean(candidate)
+		if cleanCandidate == cleanTarget {
+			continue
+		}
+		data, err := os.ReadFile(cleanCandidate)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if !json.Valid(data) {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(cleanTarget), 0700); err != nil {
+			return err
+		}
+		return os.WriteFile(cleanTarget, data, 0600)
+	}
+	return nil
 }
 
 func (cm *ConfigManager) Load() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
+	if err := migrateLegacyConfig(cm.configPath, cm.legacyPaths); err != nil {
+		logger.Printf("迁移旧配置失败，继续使用默认配置: %v", err)
+	}
 
 	// 先设置默认值
 	cm.config = NewDefaultConfig()
@@ -67,6 +110,15 @@ func (cm *ConfigManager) Load() error {
 		if err := json.Unmarshal(data, &cm.config); err != nil {
 			logger.Printf("解析配置文件失败: %v", err)
 		} else {
+			// 兼容上一版误将“文字透明度”保存为 aiTextOpacity 的配置。
+			// UI 当时显示的是透明度百分比，因此按用户看到和设置的语义迁移。
+			var legacyTextStyle struct {
+				AITextTransparency *float64 `json:"aiTextTransparency"`
+				AITextOpacity      *float64 `json:"aiTextOpacity"`
+			}
+			if json.Unmarshal(data, &legacyTextStyle) == nil && legacyTextStyle.AITextTransparency == nil && legacyTextStyle.AITextOpacity != nil {
+				cm.config.AITextTransparency = *legacyTextStyle.AITextOpacity
+			}
 			// 从旧版本迁移：solve 快捷键改名为 send，新增独立 screenshot 快捷键。
 			var raw struct {
 				Shortcuts map[string]shortcut.KeyBinding `json:"shortcuts"`
@@ -88,6 +140,9 @@ func (cm *ConfigManager) Load() error {
 	// 旧版本配置没有 AI 字体和窗口尺寸字段时，补齐安全默认值。
 	if cm.config.AIFontSize < 10 || cm.config.AIFontSize > 32 {
 		cm.config.AIFontSize = 14
+	}
+	if cm.config.AITextTransparency < 0 || cm.config.AITextTransparency > 1 {
+		cm.config.AITextTransparency = 0
 	}
 	// 为旧版空 Prompt 配置补充通用解题提示词。
 	if cm.config.Prompt == "" {
